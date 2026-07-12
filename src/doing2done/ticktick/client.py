@@ -32,10 +32,10 @@ class TickTickClient:
         return r.json()
 
     # ── writes ──
-    def _create(self, body: dict) -> str:
+    def _create(self, body: dict) -> dict:
         r = self._http.post("/task", json=body)
         r.raise_for_status()
-        return r.json()["id"]
+        return r.json()
 
     def _update(self, task_id: str, body: dict) -> None:
         r = self._http.post(f"/task/{task_id}", json={**body, "id": task_id})
@@ -64,13 +64,17 @@ class TickTickClient:
         if project_id:
             body["projectId"] = project_id
 
-        existing = self.state.get_task_id(note_id, title)
+        existing = self.state.get_task(note_id, title)
         if existing:
-            self._update(existing, body)
-            return existing
-        task_id = self._create(body)
-        self.state.remember_task(note_id, title, task_id)
-        return task_id
+            if existing["completed"]:
+                return existing["task_id"]  # don't resurrect a completed task
+            self._update(existing["task_id"], body)
+            return existing["task_id"]
+        created = self._create(body)
+        self.state.remember_task(
+            note_id, title, created["id"], created.get("projectId")
+        )
+        return created["id"]
 
     def close(self) -> None:
         self._http.close()

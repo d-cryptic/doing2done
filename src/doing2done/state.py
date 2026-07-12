@@ -1,4 +1,4 @@
-"""SQLite state: note->task dedup map + processed-note watermark. Zero infra."""
+"""SQLite state: note->task map (with project + completion) + note watermark."""
 from __future__ import annotations
 
 import hashlib
@@ -9,19 +9,26 @@ from pathlib import Path
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS task_map (
-    key        TEXT PRIMARY KEY,   -- sha1(note_id:item_title)
+    key        TEXT PRIMARY KEY,   -- sha1(note_id:title)
     note_id    TEXT NOT NULL,
     task_id    TEXT NOT NULL,
+    project_id TEXT,
     title      TEXT NOT NULL,
+    completed  INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS notes_seen (
     note_id    TEXT PRIMARY KEY,
-    modified   TEXT NOT NULL,      -- last modification timestamp we processed
-    md_path    TEXT,               -- where the note's markdown was written
+    modified   TEXT NOT NULL,
+    md_path    TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
+
+# columns added after v1 — applied idempotently for existing DBs
+_MIGRATIONS = {
+    "task_map": {"project_id": "TEXT", "completed": "INTEGER NOT NULL DEFAULT 0"},
+}
 
 
 def item_key(note_id: str, title: str) -> str:
@@ -34,6 +41,11 @@ class State:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
             c.executescript(_SCHEMA)
+            for table, cols in _MIGRATIONS.items():
+                have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+                for col, decl in cols.items():
+                    if col not in have:
+                        c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -45,24 +57,35 @@ class State:
         finally:
             conn.close()
 
-    # task dedup
-    def get_task_id(self, note_id: str, title: str) -> str | None:
+    # ── task dedup ──
+    def get_task(self, note_id: str, title: str) -> sqlite3.Row | None:
         with self._conn() as c:
-            row = c.execute(
-                "SELECT task_id FROM task_map WHERE key = ?",
-                (item_key(note_id, title),),
+            return c.execute(
+                "SELECT * FROM task_map WHERE key = ?", (item_key(note_id, title),)
             ).fetchone()
-            return row["task_id"] if row else None
 
-    def remember_task(self, note_id: str, title: str, task_id: str) -> None:
+    def remember_task(
+        self, note_id: str, title: str, task_id: str, project_id: str | None
+    ) -> None:
         with self._conn() as c:
             c.execute(
-                "INSERT OR REPLACE INTO task_map(key, note_id, task_id, title) "
-                "VALUES (?, ?, ?, ?)",
-                (item_key(note_id, title), note_id, task_id, title),
+                "INSERT OR REPLACE INTO task_map"
+                "(key, note_id, task_id, project_id, title, completed) "
+                "VALUES (?, ?, ?, ?, ?, 0)",
+                (item_key(note_id, title), note_id, task_id, project_id, title),
             )
 
-    # note watermark
+    def tasks_for_note(self, note_id: str) -> list[sqlite3.Row]:
+        with self._conn() as c:
+            return c.execute(
+                "SELECT * FROM task_map WHERE note_id = ? AND completed = 0", (note_id,)
+            ).fetchall()
+
+    def mark_task_completed(self, key: str) -> None:
+        with self._conn() as c:
+            c.execute("UPDATE task_map SET completed = 1 WHERE key = ?", (key,))
+
+    # ── note watermark ──
     def note_needs_processing(self, note_id: str, modified: str) -> bool:
         with self._conn() as c:
             row = c.execute(
@@ -77,3 +100,11 @@ class State:
                 "VALUES (?, ?, ?)",
                 (note_id, modified, md_path),
             )
+
+    def all_seen_notes(self) -> list[sqlite3.Row]:
+        with self._conn() as c:
+            return c.execute("SELECT note_id, md_path FROM notes_seen").fetchall()
+
+    def forget_note(self, note_id: str) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM notes_seen WHERE note_id = ?", (note_id,))

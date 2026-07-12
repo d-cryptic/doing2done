@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.doing2done.sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/barun/Developers/personal/doing2done/scripts/run.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/barun/Developers/personal/doing2done/data/sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/barun/Developers/personal/doing2done/data/sync.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

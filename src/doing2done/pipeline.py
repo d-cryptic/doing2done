@@ -10,9 +10,9 @@ from .classify.classifier import classify_note
 from .config import Settings
 from .notes.export import list_notes
 from .notes.media import NoteMedia, media_by_note, note_pk_from_jxa_id
-from .state import State
+from .state import State, item_key
 from .ticktick.client import TickTickClient
-from .vault import note_stem, write_note
+from .vault import archive_note, note_stem, write_note
 
 MAX_CHARS = 12000  # cap note text sent to the LLM (token + cost guard)
 
@@ -84,6 +84,8 @@ class IngestReport:
     todos_upserted: int = 0
     notes_written: int = 0
     diagrams: int = 0
+    completed: int = 0
+    archived: int = 0
     skipped: int = 0
     errors: int = 0
 
@@ -125,9 +127,28 @@ def run_ingest(
                 return v
         return default
 
+    # Resolve a task's project (fallback: scan project data) so we can complete it.
+    pid_cache: dict[str, str] = {}
+    pid_built = {"done": False}
+
+    def resolve_task_pid(task_id: str, stored_pid: str | None) -> str | None:
+        if stored_pid:
+            return stored_pid
+        if not pid_built["done"] and tt is not None:
+            pid_built["done"] = True
+            for pid in set(name2id.values()):
+                try:
+                    for tsk in tt.project_data(pid).get("tasks") or []:
+                        pid_cache[tsk["id"]] = pid
+                except Exception:
+                    pass
+        return pid_cache.get(task_id)
+
+    live_ids: set[str] = set()
     for note in list_notes():
         if limit is not None and report.processed >= limit:
             break
+        live_ids.add(note.id)
 
         drawings = media_map.get(note_pk_from_jxa_id(note.id) or -1, [])
         has_media = any(m.png_paths for m in drawings)
@@ -178,11 +199,50 @@ def run_ingest(
                     )
                 report.todos_upserted += 1
 
+            # reconcile: todos removed from the note -> complete their tasks
+            if apply and tt is not None:
+                new_keys = {item_key(note.id, td.title) for td in result.todos}
+                for row in state.tasks_for_note(note.id):
+                    if row["key"] in new_keys:
+                        continue
+                    pid = resolve_task_pid(row["task_id"], row["project_id"])
+                    if pid:
+                        try:
+                            tt.complete(pid, row["task_id"])
+                        except Exception:
+                            pass
+                    state.mark_task_completed(row["key"])
+                    report.completed += 1
+
             if apply:
                 state.mark_note(note.id, note.modified, md_path)
             report.processed += 1
         except Exception as e:  # one bad note must not abort the run
             report.errors += 1
             print(f"  ! error on '{note.name[:40]}': {type(e).__name__}: {str(e)[:120]}")
+
+    # reconcile: notes deleted in Apple Notes -> complete tasks + archive vault note
+    if apply and tt is not None and limit is None:
+        for row in state.all_seen_notes():
+            if row["note_id"] in live_ids:
+                continue
+            for trow in state.tasks_for_note(row["note_id"]):
+                pid = resolve_task_pid(trow["task_id"], trow["project_id"])
+                if pid:
+                    try:
+                        tt.complete(pid, trow["task_id"])
+                    except Exception:
+                        pass
+                state.mark_task_completed(trow["key"])
+                report.completed += 1
+            if row["md_path"]:
+                try:
+                    archive_note(
+                        row["md_path"], settings.vault_dir, settings.vault_notes_dir
+                    )
+                    report.archived += 1
+                except Exception:
+                    pass
+            state.forget_note(row["note_id"])
 
     return report
