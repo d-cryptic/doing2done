@@ -1,4 +1,4 @@
-"""Orchestrate ingest: notes -> (OCR) -> classify -> todos + vault markdown + diagrams."""
+"""Orchestrate ingest: notes -> (OCR) -> classify -> routed todos + vault + diagrams."""
 from __future__ import annotations
 
 import re
@@ -23,13 +23,16 @@ def _strip_html(html: str) -> str:
     return text[:MAX_CHARS]
 
 
-def _persist_diagrams(stem: str, items: list[NoteMedia], notes_dir: str) -> str:
-    """Copy rendered diagrams into the vault, embed + OCR them. Returns markdown."""
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _persist_diagrams(stem: str, items: list[NoteMedia], notes_dir: str) -> tuple[str, int]:
     from .notes.ocr import recognize  # lazy: needs the 'ocr' extra
 
     drawings = [m for m in items if m.png_path]
     if not drawings:
-        return ""
+        return "", 0
     asset_dir = Path(notes_dir) / "assets" / stem
     asset_dir.mkdir(parents=True, exist_ok=True)
     out = ["\n\n## Diagrams\n"]
@@ -42,8 +45,8 @@ def _persist_diagrams(stem: str, items: list[NoteMedia], notes_dir: str) -> str:
             if txt:
                 out.append(f"\n> **OCR {i}:** {txt}\n")
         except Exception:
-            pass  # OCR optional; image still persisted
-    return "".join(out)
+            pass
+    return "".join(out), len(drawings)
 
 
 @dataclass
@@ -53,6 +56,7 @@ class IngestReport:
     notes_written: int = 0
     diagrams: int = 0
     skipped: int = 0
+    errors: int = 0
 
 
 def run_ingest(
@@ -65,6 +69,31 @@ def run_ingest(
 ) -> IngestReport:
     report = IngestReport()
     media_map = media_by_note()
+
+    # Build routing table from the user's existing TickTick lists.
+    name2id: dict[str, str] = {}
+    norm2id: dict[str, str] = {}
+    project_names: list[str] | None = None
+    if tt is not None:
+        for p in tt.projects():
+            name2id[p["name"]] = p["id"]
+            norm2id[_norm(p["name"])] = p["id"]
+        project_names = list(name2id)
+
+    def resolve_pid(proj: str | None) -> str | None:
+        default = settings.ticktick_default_project_id or None
+        if not proj:
+            return default
+        if proj in name2id:
+            return name2id[proj]
+        n = _norm(proj)
+        if n in norm2id:
+            return norm2id[n]
+        for k, v in norm2id.items():
+            if n and (n in k or k in n):
+                return v
+        return default
+
     for note in list_notes():
         if limit is not None and report.processed >= limit:
             break
@@ -74,7 +103,6 @@ def run_ingest(
 
         drawings = media_map.get(note_pk_from_jxa_id(note.id) or -1, [])
         has_media = any(m.png_path for m in drawings)
-
         text = _strip_html(note.body_html)
         if len(text) < 3 and not has_media:
             if apply:
@@ -82,35 +110,45 @@ def run_ingest(
             report.skipped += 1
             continue
 
-        result = classify_note(
-            text or note.name,
-            provider=settings.llm_provider,
-            api_key=settings.llm_api_key,
-            model=settings.llm_model,
-            base_url=settings.llm_base_url,
-        )
+        try:
+            result = classify_note(
+                text or note.name,
+                provider=settings.llm_provider,
+                api_key=settings.llm_api_key,
+                model=settings.llm_model,
+                base_url=settings.llm_base_url,
+                projects=project_names,
+            )
 
-        md_path = None
-        if not result.is_todo_only or has_media:
+            md_path = None
+            if not result.is_todo_only or has_media:
+                if apply:
+                    stem = note_stem(result)
+                    diagram_md, ndraw = _persist_diagrams(
+                        stem, drawings, settings.vault_notes_dir
+                    )
+                    md_path = write_note(result, settings.vault_notes_dir, diagram_md)
+                    report.diagrams += ndraw
+                else:
+                    report.diagrams += sum(1 for m in drawings if m.png_path)
+                report.notes_written += 1
+
+            for todo in result.todos:
+                if apply and tt is not None:
+                    tt.upsert_task(
+                        note.id,
+                        todo.title,
+                        due_date=todo.due_date,
+                        priority=todo.priority,
+                        project_id=resolve_pid(todo.project),
+                    )
+                report.todos_upserted += 1
+
             if apply:
-                stem = note_stem(result)
-                diagram_md = _persist_diagrams(stem, drawings, settings.vault_notes_dir)
-                md_path = write_note(result, settings.vault_notes_dir, diagram_md)
-            report.notes_written += 1
-            report.diagrams += sum(1 for m in drawings if m.png_path)
+                state.mark_note(note.id, note.modified, md_path)
+            report.processed += 1
+        except Exception as e:  # one bad note must not abort the run
+            report.errors += 1
+            print(f"  ! error on '{note.name[:40]}': {type(e).__name__}: {str(e)[:120]}")
 
-        for todo in result.todos:
-            if apply and tt is not None:
-                tt.upsert_task(
-                    note.id,
-                    todo.title,
-                    due_date=todo.due_date,
-                    priority=todo.priority,
-                    project_id=settings.ticktick_default_project_id or None,
-                )
-            report.todos_upserted += 1
-
-        if apply:
-            state.mark_note(note.id, note.modified, md_path)
-        report.processed += 1
     return report

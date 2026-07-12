@@ -71,11 +71,20 @@ def classify_note(
     model: str,
     base_url: str = "",
     today: str | None = None,
+    projects: list[str] | None = None,
 ) -> NoteResult:
     if not api_key:
         raise RuntimeError("LLM_API_KEY not set — cannot classify.")
     today = today or _dt.date.today().isoformat()
-    dated = f"Today is {today}. Resolve any relative dates against it.\n\n{text}"
+    parts = [f"Today is {today}. Resolve any relative dates against it."]
+    if projects:
+        parts.append(
+            "Available TickTick lists — set each todo.project to the EXACT "
+            "best-matching name from this list, or null for none: "
+            + ", ".join(projects)
+        )
+    parts.append(text)
+    dated = "\n\n".join(parts)
     if provider == "gemini":
         raw = _gemini(dated, api_key, model)
     else:
