@@ -27,26 +27,55 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
-def _persist_diagrams(stem: str, items: list[NoteMedia], notes_dir: str) -> tuple[str, int]:
-    from .notes.ocr import recognize  # lazy: needs the 'ocr' extra
+def _persist_diagrams(
+    stem: str, items: list[NoteMedia], notes_dir: str, settings: Settings
+) -> tuple[str, int]:
+    """Vision-caption each render, dedup by content, persist distinct pages only."""
+    from difflib import SequenceMatcher
 
-    drawings = [m for m in items if m.png_path]
+    from .classify.vision import describe_page
+
+    def _norm(d: dict) -> str:
+        blob = f"{d.get('transcription', '')} {d.get('caption', '')}".lower()
+        return re.sub(r"\s+", " ", blob).strip()
+
+    drawings = [m for m in items if m.png_paths]
     if not drawings:
         return "", 0
     asset_dir = Path(notes_dir) / "assets" / stem
     asset_dir.mkdir(parents=True, exist_ok=True)
     out = ["\n\n## Diagrams\n"]
-    for i, m in enumerate(drawings, 1):
-        dest = asset_dir / f"diagram-{i}.png"
-        shutil.copyfile(m.png_path, dest)
-        out.append(f"\n![diagram {i}](./assets/{stem}/diagram-{i}.png)\n")
-        try:
-            txt = recognize(dest).strip()
-            if txt:
-                out.append(f"\n> **OCR {i}:** {txt}\n")
-        except Exception:
-            pass
-    return "".join(out), len(drawings)
+    kept: list[str] = []
+    count = 0
+    for m in drawings:
+        for src in m.png_paths:
+            try:
+                desc = describe_page(
+                    src,
+                    api_key=settings.llm_api_key,
+                    model=settings.llm_model,
+                    base_url=settings.llm_base_url,
+                )
+            except Exception:
+                desc = {}
+            norm = _norm(desc)
+            # skip near-duplicate renders of the same page
+            if norm and any(SequenceMatcher(None, norm, k).ratio() >= 0.85 for k in kept):
+                continue
+            kept.append(norm)
+            count += 1
+            dest = asset_dir / f"diagram-{count}.png"
+            shutil.copyfile(src, dest)
+            kind = desc.get("kind", "")
+            caption = desc.get("caption", "")
+            transcription = desc.get("transcription", "")
+            label = f"diagram {count}" + (f" \u00b7 {kind}" if kind else "")
+            out.append(f"\n![{label}](./assets/{stem}/diagram-{count}.png)\n")
+            if caption:
+                out.append(f"\n*{caption}*\n")
+            if transcription:
+                out.append(f"\n> **Transcription:** {transcription}\n")
+    return "".join(out), count
 
 
 @dataclass
@@ -66,6 +95,8 @@ def run_ingest(
     *,
     apply: bool,
     limit: int | None = None,
+    force: bool = False,
+    media_only: bool = False,
 ) -> IngestReport:
     report = IngestReport()
     media_map = media_by_note()
@@ -97,12 +128,15 @@ def run_ingest(
     for note in list_notes():
         if limit is not None and report.processed >= limit:
             break
-        if not state.note_needs_processing(note.id, note.modified):
-            report.skipped += 1
-            continue
 
         drawings = media_map.get(note_pk_from_jxa_id(note.id) or -1, [])
-        has_media = any(m.png_path for m in drawings)
+        has_media = any(m.png_paths for m in drawings)
+        if media_only and not has_media:
+            report.skipped += 1
+            continue
+        if not force and not state.note_needs_processing(note.id, note.modified):
+            report.skipped += 1
+            continue
         text = _strip_html(note.body_html)
         if len(text) < 3 and not has_media:
             if apply:
@@ -125,12 +159,12 @@ def run_ingest(
                 if apply:
                     stem = note_stem(result)
                     diagram_md, ndraw = _persist_diagrams(
-                        stem, drawings, settings.vault_notes_dir
+                        stem, drawings, settings.vault_notes_dir, settings
                     )
                     md_path = write_note(result, settings.vault_notes_dir, diagram_md)
                     report.diagrams += ndraw
                 else:
-                    report.diagrams += sum(1 for m in drawings if m.png_path)
+                    report.diagrams += sum(len(m.png_paths) for m in drawings)
                 report.notes_written += 1
 
             for todo in result.todos:

@@ -97,6 +97,8 @@ def deploy_site() -> None:
 def ingest(
     apply: bool = typer.Option(False, help="Write todos + notes (default: dry-run)."),
     limit: int = typer.Option(0, help="Only process the first N changed notes (0 = all)."),
+    force: bool = typer.Option(False, help="Reprocess even if unchanged (ignore watermark)."),
+    media_only: bool = typer.Option(False, "--media-only", help="Only notes with diagrams."),
 ) -> None:
     """Run the ingest pipeline. Dry-run by default; pass --apply to commit changes."""
     s = get_settings()
@@ -108,7 +110,9 @@ def ingest(
             rprint("[red]No TickTick token — run `d2d auth` first.[/red]")
             raise typer.Exit(1)
         tt = TickTickClient(tok["access_token"], state)
-    rep = run_ingest(s, state, tt, apply=apply, limit=limit or None)
+    rep = run_ingest(
+        s, state, tt, apply=apply, limit=limit or None, force=force, media_only=media_only
+    )
     mode = "APPLIED" if apply else "DRY-RUN"
     rprint(
         f"[bold]{mode}[/bold] — processed={rep.processed} "
