@@ -34,20 +34,26 @@ def note_pk_from_jxa_id(jxa_id: str) -> int | None:
 
 
 def _resolve_pngs(identifier: str, container: Path) -> tuple[str, ...]:
-    found: list[tuple[int, str]] = []
-    for d in container.glob(f"Accounts/*/Previews/{identifier}-*"):
-        m = re.search(r"-(\d+)$", d.name)  # trailing page index
-        page = int(m.group(1)) if m else 0
-        for png in d.rglob("Preview.png"):
-            found.append((page, str(png)))
-    if not found:  # fallback: embedded image in Media/
+    # 1) FULL-resolution render — captures the ENTIRE note (long/multi-screen),
+    #    not just the first-screen 768x768 thumbnail.
+    candidates: list[str] = [
+        str(p)
+        for p in container.glob(
+            f"Accounts/*/FallbackImages/{identifier}/**/FallbackImage.png"
+        )
+    ]
+    # 2) fallback to preview thumbnails only if no full render exists
+    if not candidates:
+        for d in container.glob(f"Accounts/*/Previews/{identifier}-*"):
+            candidates += [str(p) for p in d.rglob("Preview.png")]
+    if not candidates:
         for f in container.glob(f"Accounts/*/Media/{identifier}/*"):
             if f.suffix.lower() in _IMG_EXTS:
-                found.append((0, str(f)))
-    found.sort(key=lambda x: x[0])
+                candidates.append(str(f))
+    # dedup identical renders, keep order
     seen: set[str] = set()
     pages: list[str] = []
-    for _, p in found:
+    for p in candidates:
         try:
             h = hashlib.md5(Path(p).read_bytes()).hexdigest()
         except OSError:
@@ -56,7 +62,6 @@ def _resolve_pngs(identifier: str, container: Path) -> tuple[str, ...]:
             seen.add(h)
             pages.append(p)
     return tuple(pages)
-
 
 def media_by_note(container: Path = NOTES_CONTAINER) -> dict[int, list[NoteMedia]]:
     db = container / "NoteStore.sqlite"

@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     llm_model: str = "google/gemini-2.5-flash"
 
     # ── Local paths ──
+    notes_source: str = "store"  # store (FDA-only, no Automation) | jxa
     state_db: str = "data/state.db"
     exports_dir: str = "exports"
     vault_dir: str = "../doing2done-vault"

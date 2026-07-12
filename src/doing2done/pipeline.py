@@ -8,7 +8,8 @@ from pathlib import Path
 
 from .classify.classifier import classify_note
 from .config import Settings
-from .notes.export import list_notes
+from .notes import export as _export
+from .notes import store as _store
 from .notes.media import NoteMedia, media_by_note, note_pk_from_jxa_id
 from .state import State, item_key
 from .ticktick.client import TickTickClient
@@ -101,6 +102,7 @@ def run_ingest(
     media_only: bool = False,
 ) -> IngestReport:
     report = IngestReport()
+    read_notes = _store.list_notes if settings.notes_source != "jxa" else _export.list_notes
     media_map = media_by_note()
 
     # Build routing table from the user's existing TickTick lists.
@@ -145,7 +147,7 @@ def run_ingest(
         return pid_cache.get(task_id)
 
     live_ids: set[str] = set()
-    for note in list_notes():
+    for note in read_notes():
         if limit is not None and report.processed >= limit:
             break
         live_ids.add(note.id)
