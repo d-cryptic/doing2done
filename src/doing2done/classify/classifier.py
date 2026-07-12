@@ -1,6 +1,7 @@
 """One cheap-LLM pass: OCR'd note text -> {todos[], markdown, title, date, tags}."""
 from __future__ import annotations
 
+import datetime as _dt
 import json
 
 import httpx
@@ -39,10 +40,15 @@ def _gemini(text: str, api_key: str, model: str) -> str:
     return r.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
-def _openai(text: str, api_key: str, model: str) -> str:
+def _openai(text: str, api_key: str, model: str, base_url: str = "") -> str:
+    url = (base_url or "https://api.openai.com/v1").rstrip("/") + "/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    if "openrouter" in (base_url or ""):
+        headers["HTTP-Referer"] = "https://github.com/d-cryptic/doing2done"
+        headers["X-Title"] = "doing2done"
     r = httpx.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}"},
+        url,
+        headers=headers,
         json={
             "model": model,
             "response_format": {"type": "json_object"},
@@ -57,8 +63,21 @@ def _openai(text: str, api_key: str, model: str) -> str:
     return r.json()["choices"][0]["message"]["content"]
 
 
-def classify_note(text: str, *, provider: str, api_key: str, model: str) -> NoteResult:
+def classify_note(
+    text: str,
+    *,
+    provider: str,
+    api_key: str,
+    model: str,
+    base_url: str = "",
+    today: str | None = None,
+) -> NoteResult:
     if not api_key:
         raise RuntimeError("LLM_API_KEY not set — cannot classify.")
-    raw = _gemini(text, api_key, model) if provider == "gemini" else _openai(text, api_key, model)
+    today = today or _dt.date.today().isoformat()
+    dated = f"Today is {today}. Resolve any relative dates against it.\n\n{text}"
+    if provider == "gemini":
+        raw = _gemini(dated, api_key, model)
+    else:
+        raw = _openai(dated, api_key, model, base_url)
     return NoteResult.model_validate(json.loads(raw))

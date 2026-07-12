@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,15 +28,24 @@ class Settings(BaseSettings):
     cf_access_allowed_email: str = "barundebnath91@gmail.com"
 
     # ── LLM classifier (cheap model) ──
-    llm_provider: str = "gemini"  # gemini | openai
+    llm_provider: str = "openai"  # openai(-compatible) | gemini
+    llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_api_key: str = ""
-    llm_model: str = "gemini-1.5-flash"
+    openrouter_api_key: str = ""  # alias fallback
+    llm_model: str = "google/gemini-2.5-flash"
 
     # ── Local paths ──
     state_db: str = "data/state.db"
     exports_dir: str = "exports"
     vault_dir: str = "../doing2done-vault"
     vault_notes_dir: str = "../doing2done-vault/docs/notes"
+
+
+    @model_validator(mode="after")
+    def _fill_llm_key(self) -> Settings:
+        if not self.llm_api_key and self.openrouter_api_key:
+            object.__setattr__(self, "llm_api_key", self.openrouter_api_key)
+        return self
 
 
 @lru_cache
