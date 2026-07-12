@@ -11,9 +11,13 @@ from .state import State
 from .ticktick.client import TickTickClient
 from .vault import write_note
 
+MAX_CHARS = 12000  # cap note text sent to the LLM (token + cost guard)
+
 
 def _strip_html(html: str) -> str:
-    return re.sub(r"<[^>]+>", " ", html or "").replace("&nbsp;", " ").strip()
+    text = re.sub(r"<[^>]+>", " ", html or "").replace("&nbsp;", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:MAX_CHARS]
 
 
 @dataclass
@@ -30,15 +34,22 @@ def run_ingest(
     tt: TickTickClient | None,
     *,
     apply: bool,
+    limit: int | None = None,
 ) -> IngestReport:
     report = IngestReport()
     for note in list_notes():
+        if limit is not None and report.processed >= limit:
+            break
         if not state.note_needs_processing(note.id, note.modified):
             report.skipped += 1
             continue
 
         # TODO(phase-1.1): if note has drawings, OCR the rendered image instead.
-        text = _strip_html(note.body_html) or note.name
+        text = _strip_html(note.body_html)
+        if len(text) < 3:
+            state.mark_note(note.id, note.modified, None) if apply else None
+            report.skipped += 1
+            continue
         result = classify_note(
             text,
             provider=settings.llm_provider,

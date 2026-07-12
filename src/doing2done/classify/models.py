@@ -1,7 +1,7 @@
 """Structured output contract for the classifier."""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Todo(BaseModel):
@@ -12,9 +12,19 @@ class Todo(BaseModel):
 
 
 class NoteResult(BaseModel):
-    title: str
+    title: str = "Untitled"
     date: str | None = None
     tags: list[str] = Field(default_factory=list)
     todos: list[Todo] = Field(default_factory=list)
     markdown: str = Field("", description="clean markdown body for the note vault")
     is_todo_only: bool = False
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def _coerce_title(cls, v: object) -> str:
+        return str(v) if v else "Untitled"
+
+    @field_validator("tags", "todos", mode="before")
+    @classmethod
+    def _none_to_list(cls, v: object) -> object:
+        return v or []

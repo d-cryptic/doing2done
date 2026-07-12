@@ -96,6 +96,7 @@ def deploy_site() -> None:
 @app.command()
 def ingest(
     apply: bool = typer.Option(False, help="Write todos + notes (default: dry-run)."),
+    limit: int = typer.Option(0, help="Only process the first N changed notes (0 = all)."),
 ) -> None:
     """Run the ingest pipeline. Dry-run by default; pass --apply to commit changes."""
     s = get_settings()
@@ -107,7 +108,7 @@ def ingest(
             rprint("[red]No TickTick token — run `d2d auth` first.[/red]")
             raise typer.Exit(1)
         tt = TickTickClient(tok["access_token"], state)
-    rep = run_ingest(s, state, tt, apply=apply)
+    rep = run_ingest(s, state, tt, apply=apply, limit=limit or None)
     mode = "APPLIED" if apply else "DRY-RUN"
     rprint(
         f"[bold]{mode}[/bold] — processed={rep.processed} "
