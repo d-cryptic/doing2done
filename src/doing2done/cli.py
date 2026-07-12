@@ -69,6 +69,30 @@ def gate_site(domain: str = typer.Option(..., help="e.g. doing2done-vault.pages.
         cf.close()
 
 
+@app.command("deploy-site")
+def deploy_site() -> None:
+    """Build the VitePress vault and deploy it to Cloudflare Pages."""
+    import os
+    import subprocess
+
+    s = get_settings()
+    subprocess.run(["npm", "run", "docs:build"], cwd=s.vault_dir, check=True)
+    env = {
+        **os.environ,
+        "CLOUDFLARE_API_TOKEN": s.cf_admin_api_token,
+        "CLOUDFLARE_ACCOUNT_ID": s.cf_account_id,
+    }
+    subprocess.run(
+        [
+            "wrangler", "pages", "deploy", "docs/.vitepress/dist",
+            "--project-name", s.cf_pages_project,
+            "--branch", "main", "--commit-dirty=true",
+        ],
+        cwd=s.vault_dir, env=env, check=True,
+    )
+    rprint(f"[green]Deployed[/green] -> https://{s.cf_pages_project}.pages.dev")
+
+
 @app.command()
 def ingest(
     apply: bool = typer.Option(False, help="Write todos + notes (default: dry-run)."),

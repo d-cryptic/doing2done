@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # ── Local paths ──
     state_db: str = "data/state.db"
     exports_dir: str = "exports"
+    vault_dir: str = "../doing2done-vault"
     vault_notes_dir: str = "../doing2done-vault/docs/notes"
 
 
