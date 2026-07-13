@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS task_map (
     completed  INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 CREATE TABLE IF NOT EXISTS notes_seen (
     note_id    TEXT PRIMARY KEY,
     modified   TEXT NOT NULL,
@@ -119,6 +123,15 @@ class State:
     def all_seen_notes(self) -> list[sqlite3.Row]:
         with self._conn() as c:
             return c.execute("SELECT note_id, md_path FROM notes_seen").fetchall()
+
+    def get_kv(self, key: str) -> str | None:
+        with self._conn() as c:
+            row = c.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+            return row["value"] if row else None
+
+    def set_kv(self, key: str, value: str) -> None:
+        with self._conn() as c:
+            c.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value))
 
     def forget_note(self, note_id: str) -> None:
         with self._conn() as c:

@@ -11,6 +11,9 @@ notify() { uv run python -c "from doing2done.notify import notify; notify(\"$1\"
 echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) doing2done sync ==="
 cd "$REPO" || exit 1
 
+# 0) pull any queued Telegram captures
+uv run d2d capture || notify "capture failed"
+
 # 1) ingest (writes todos to TickTick + notes/diagrams to the vault; reconciles deletes)
 uv run d2d ingest --apply || notify "scheduled ingest failed"
 

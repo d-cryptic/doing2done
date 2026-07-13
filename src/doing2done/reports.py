@@ -86,3 +86,18 @@ def weekly_digest(settings: Settings, days: int = 7) -> str:
     header = f'---\ntitle: "Weekly — {today}"\n---\n\n# Weekly review — {today}\n\n'
     dest.write_text(header + body + "\n")
     return str(dest)
+
+
+def generate_duplicates_page(notes_dir: str) -> str:
+    """Write docs/duplicates.md listing near-duplicate note pairs for review."""
+    from .relate import find_duplicates
+
+    pairs = find_duplicates(notes_dir)
+    out = ["# Possible duplicates\n", "\nNear-duplicate notes to review/merge:\n"]
+    if not pairs:
+        out.append("\n*none found* 🎉")
+    for a, b, sim in pairs:
+        out.append(f"- **{sim}** — {a}  ~  {b}")
+    dest = Path(notes_dir).parent / "duplicates.md"
+    dest.write_text("\n".join(out) + "\n")
+    return str(dest)

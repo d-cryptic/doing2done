@@ -103,3 +103,39 @@ def relate_vault(notes_dir: str, top_k: int = 5, threshold: float = 0.06) -> int
         if block:
             updated += 1
     return updated
+
+
+def find_duplicates(notes_dir: str, threshold: float = 0.72) -> list[tuple[str, str, float]]:
+    """Return (title_a, title_b, similarity) pairs of near-duplicate notes."""
+    nd = Path(notes_dir)
+    files = [f for f in nd.glob("*.md") if f.name != "index.md"]
+    docs = []
+    for f in files:
+        fm, body = _frontmatter(f.read_text())
+        text = f"{fm.get('title', '')} {body}"
+        docs.append({"title": fm.get("title", f.stem), "tf": Counter(_tokens(text))})
+    if len(docs) < 2:
+        return []
+    df: Counter = Counter()
+    for d in docs:
+        for term in d["tf"]:
+            df[term] += 1
+    n = len(docs)
+    idf = {t: math.log(n / (1 + c)) + 1 for t, c in df.items()}
+    vecs = []
+    for d in docs:
+        mx = max(d["tf"].values()) if d["tf"] else 1
+        v = {t: (f / mx) * idf[t] for t, f in d["tf"].items()}
+        norm = math.sqrt(sum(x * x for x in v.values())) or 1.0
+        vecs.append((v, norm))
+    out = []
+    for i in range(len(docs)):
+        for j in range(i + 1, len(docs)):
+            vi, ni = vecs[i]
+            vj, nj = vecs[j]
+            small, big = (vi, vj) if len(vi) < len(vj) else (vj, vi)
+            dot = sum(w * big.get(t, 0.0) for t, w in small.items())
+            sim = dot / (ni * nj)
+            if sim >= threshold:
+                out.append((docs[i]["title"], docs[j]["title"], round(sim, 3)))
+    return sorted(out, key=lambda x: -x[2])
