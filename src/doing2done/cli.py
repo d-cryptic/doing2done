@@ -106,6 +106,10 @@ def deploy_site() -> None:
     from .reports import generate_duplicates_page
 
     generate_duplicates_page(s.vault_notes_dir)
+    from .reports import generate_graph, generate_timeline
+
+    generate_timeline(s.vault_notes_dir)
+    generate_graph(s.vault_notes_dir)
     subprocess.run(["npm", "run", "docs:build"], cwd=s.vault_dir, check=True)
     env = {
         **os.environ,
@@ -182,6 +186,38 @@ def insights() -> None:
 
     p = generate_insights(get_settings())
     rprint(f"[green]insights[/green] -> {p or 'no notes'}")
+
+
+@app.command()
+def analytics() -> None:
+    """Generate the completion + open-task analytics page."""
+    from .reports import generate_analytics
+
+    s = get_settings()
+    state = State(s.state_db)
+    tt = _valid_ticktick(s, state)
+    try:
+        p = generate_analytics(s, state, tt)
+    finally:
+        if tt:
+            tt.close()
+    rprint(f"[green]analytics[/green] -> {p}")
+
+
+@app.command()
+def timeline() -> None:
+    """Generate the timeline (notes by date) page."""
+    from .reports import generate_timeline
+
+    rprint(f"[green]timeline[/green] -> {generate_timeline(get_settings().vault_notes_dir)}")
+
+
+@app.command()
+def graph() -> None:
+    """Generate the Mermaid note graph page."""
+    from .reports import generate_graph
+
+    rprint(f"[green]graph[/green] -> {generate_graph(get_settings().vault_notes_dir)}")
 
 
 @app.command()

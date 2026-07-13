@@ -124,6 +124,16 @@ class State:
         with self._conn() as c:
             return c.execute("SELECT note_id, md_path FROM notes_seen").fetchall()
 
+    def completions_by_day(self, days: int = 14) -> list[tuple[str, int]]:
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT date(updated_at) d, COUNT(*) n FROM task_map "
+                "WHERE completed = 1 AND updated_at >= datetime('now', ?) "
+                "GROUP BY d ORDER BY d",
+                (f"-{days} day",),
+            ).fetchall()
+            return [(r["d"], r["n"]) for r in rows]
+
     def get_kv(self, key: str) -> str | None:
         with self._conn() as c:
             row = c.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()

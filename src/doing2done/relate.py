@@ -139,3 +139,39 @@ def find_duplicates(notes_dir: str, threshold: float = 0.72) -> list[tuple[str, 
             if sim >= threshold:
                 out.append((docs[i]["title"], docs[j]["title"], round(sim, 3)))
     return sorted(out, key=lambda x: -x[2])
+
+
+def top_edges(notes_dir: str, max_edges: int = 60, threshold: float = 0.18):
+    """Return [(title_a, title_b, sim)] strongest note-note edges for a graph."""
+    pairs = []
+    nd = Path(notes_dir)
+    files = [f for f in nd.glob("*.md") if f.name != "index.md"]
+    docs = []
+    for f in files:
+        fm, body = _frontmatter(f.read_text())
+        docs.append({"title": fm.get("title", f.stem), "tags": set(fm.get("tags", []) or []),
+                     "tf": Counter(_tokens(f"{fm.get('title','')} {body}"))})
+    if len(docs) < 2:
+        return []
+    df = Counter()
+    for d in docs:
+        for term in d["tf"]:
+            df[term] += 1
+    n = len(docs)
+    idf = {t: math.log(n / (1 + c)) + 1 for t, c in df.items()}
+    vecs = []
+    for d in docs:
+        mx = max(d["tf"].values()) if d["tf"] else 1
+        v = {t: (f / mx) * idf[t] for t, f in d["tf"].items()}
+        vecs.append((v, math.sqrt(sum(x * x for x in v.values())) or 1.0))
+    for i in range(len(docs)):
+        for j in range(i + 1, len(docs)):
+            vi, ni = vecs[i]
+            vj, nj = vecs[j]
+            small, big = (vi, vj) if len(vi) < len(vj) else (vj, vi)
+            dot = sum(w * big.get(t, 0.0) for t, w in small.items())
+            sim = dot / (ni * nj) + 0.05 * len(docs[i]["tags"] & docs[j]["tags"])
+            if sim >= threshold:
+                pairs.append((docs[i]["title"], docs[j]["title"], sim))
+    pairs.sort(key=lambda x: -x[2])
+    return pairs[:max_edges]
