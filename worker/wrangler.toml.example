@@ -7,14 +7,6 @@ binding = "DB"
 database_name = "doing2done"
 database_id = "<YOUR_D1_DATABASE_ID>"
 
-# [[r2_buckets]]      # add once R2 scope is available
-# binding = "ASSETS"
-# bucket_name = "doing2done-assets"
-
-# [[vectorize]]       # add once Vectorize scope is available
-# binding = "VEC"
-# index_name = "doing2done-notes"
-
 [ai]
 binding = "AI"
 

@@ -4,6 +4,8 @@
 > searchable **note vault**. Ink in, done out.
 >
 > **New here? → [SETUP.md](SETUP.md)** for the full first-run guide. TL;DR: `uv run d2d init`.
+>
+> **Capture/ask from anywhere → [INTERFACES.md](INTERFACES.md)** (Apple Shortcuts, email, WhatsApp, web).
 
 Turn handwritten **Apple Notes** into **smart TickTick todos** + a private, hosted
 **note vault**. Ink in, done out.
