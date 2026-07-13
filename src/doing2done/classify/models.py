@@ -6,9 +6,14 @@ from pydantic import BaseModel, Field, field_validator
 
 class Todo(BaseModel):
     title: str
-    due_date: str | None = Field(None, description="ISO 8601, e.g. 2026-07-15T09:00:00+0000")
+    due_date: str | None = Field(
+        None, description="ISO 8601 WITH time if given, e.g. 2026-07-15T17:00:00+0000"
+    )
     priority: str = Field("none", description="none|low|medium|high")
     project: str | None = Field(None, description="optional list/project hint")
+    items: list[str] = Field(
+        default_factory=list, description="sub-items / indented subtasks under this todo"
+    )
 
 
 class NoteResult(BaseModel):

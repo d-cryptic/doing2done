@@ -18,13 +18,16 @@ Return ONLY JSON matching this schema:
   "links": string[],              // any URLs mentioned
   "todos": [                      // extract every actionable item
     {"title": string, "due_date": string|null, "priority": "none|low|medium|high",
-     "project": string|null}
+     "project": string|null, "items": string[]}   // items = indented subtasks
   ],
-  "markdown": string,             // the note body as clean markdown (exclude pure todo lists)
+  "markdown": string,             // note body as clean markdown; PRESERVE structure:
+                                  // headings, bullet/numbered lists, bold, code blocks
   "is_todo_only": boolean         // true if ONLY action items, no prose worth archiving
 }
-Infer due_date from phrases like "by Friday". Generate a meaningful title even for
-messy notes. Keep markdown faithful but tidy."""
+Infer due_date from phrases like "by Friday". If a TIME is given ("@5pm", "at 9am",
+"by 5 PM"), include it in due_date as ISO with that time (e.g. ...T17:00:00+0000);
+otherwise use no time. Nest indented sub-steps of a task into its "items" array.
+Generate a meaningful title even for messy notes. Keep markdown faithful but tidy."""
 
 
 def _gemini(text: str, api_key: str, model: str) -> str:
