@@ -61,15 +61,27 @@ def build_brief(
     due_today = [t for t in tasks if _parse_due(t.get("dueDate")) == today]
     high = [t for t in tasks if t.get("priority", 0) >= 5]
 
-    # focus = highest-priority overdue/today, up to 3
-    focus_pool = sorted(
-        overdue + due_today + high, key=lambda t: -t.get("priority", 0)
-    )
+    # Eisenhower: urgency (overdue/today) x importance (priority) -> score
+    def score(t: dict) -> float:
+        due = _parse_due(t.get("dueDate"))
+        urgency = 2 if (due and due < today) else 1 if due == today else 0
+        importance = t.get("priority", 0) / 5.0
+        return urgency + importance
+
+    def quadrant(t: dict) -> str:
+        due = _parse_due(t.get("dueDate"))
+        urgent = bool(due and due <= today)
+        important = t.get("priority", 0) >= 3
+        return {(True, True): "Q1 do-now", (False, True): "Q2 schedule",
+                (True, False): "Q3 quick", (False, False): "Q4 later"}[(urgent, important)]
+
+    focus_pool = sorted(overdue + due_today + high, key=score, reverse=True)
     seen: set[str] = set()
     focus = []
     for t in focus_pool:
         if t["id"] not in seen:
             seen.add(t["id"])
+            t["_q"] = quadrant(t)
             focus.append(t)
         if len(focus) == 3:
             break
@@ -78,7 +90,14 @@ def build_brief(
 
     title = f"Daily — {today.isoformat()}"
     md = [f"# {title}\n"]
-    md.append("## 🎯 Focus (top 3)\n" + ("\n".join(line(t) for t in focus) or "- [ ] "))
+    def focus_line(t: dict) -> str:
+        q = t.get("_q", "")
+        return f"{line(t)}  `{q}`" if q else line(t)
+
+    md.append(
+        "## 🎯 Focus (top 3)\n"
+        + ("\n".join(focus_line(t) for t in focus) or "- [ ] ")
+    )
     md.append(
         "\n## 📋 Rolled over\n" + ("\n".join(line(t) for t in rolled) or "*nothing overdue 🎉*")
     )
