@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as dt
 import subprocess
 
+from .state import State
 from .ticktick.client import TickTickClient
 
 TEMPLATE_SECTIONS = ("🎯 Focus (top 3)", "📋 Rolled over", "📝 Notes", "✅ Done")
@@ -40,7 +41,9 @@ def collect_open_tasks(tt: TickTickClient) -> list[dict]:
     return out
 
 
-def build_brief(tt: TickTickClient, today: dt.date | None = None) -> tuple[str, str]:
+def build_brief(
+    tt: TickTickClient, today: dt.date | None = None, state: State | None = None
+) -> tuple[str, str]:
     """Return (title, markdown) for today's brief with rolled-over tasks."""
     today = today or _today()
     tasks = collect_open_tasks(tt)
@@ -80,7 +83,13 @@ def build_brief(tt: TickTickClient, today: dt.date | None = None) -> tuple[str, 
         "\n## 📋 Rolled over\n" + ("\n".join(line(t) for t in rolled) or "*nothing overdue 🎉*")
     )
     md.append("\n## 📝 Notes\n\n")
-    md.append("## ✅ Done\n")
+    done = []
+    if state is not None:
+        done = [r["title"] for r in state.recently_completed(1)]
+    md.append(
+        "## ✅ Done\n"
+        + ("\n".join(f"- [x] {t}" for t in done) if done else "*nothing yet*")
+    )
     return title, "\n".join(md)
 
 
