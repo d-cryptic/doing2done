@@ -88,8 +88,14 @@ def classify_note(
         )
     parts.append(text)
     dated = "\n\n".join(parts)
-    if provider == "gemini":
-        raw = _gemini(dated, api_key, model)
-    else:
-        raw = _openai(dated, api_key, model, base_url)
-    return NoteResult.model_validate(json.loads(raw))
+    last_err: Exception | None = None
+    for _ in range(2):  # LLMs occasionally emit malformed JSON; retry once
+        if provider == "gemini":
+            raw = _gemini(dated, api_key, model)
+        else:
+            raw = _openai(dated, api_key, model, base_url)
+        try:
+            return NoteResult.model_validate(json.loads(raw))
+        except (json.JSONDecodeError, ValueError) as e:
+            last_err = e
+    raise last_err if last_err else RuntimeError("classification failed")

@@ -77,6 +77,9 @@ def deploy_site() -> None:
     import subprocess
 
     s = get_settings()
+    from .reports import generate_tag_index
+
+    generate_tag_index(s.vault_notes_dir)
     subprocess.run(["npm", "run", "docs:build"], cwd=s.vault_dir, check=True)
     env = {
         **os.environ,
@@ -123,6 +126,24 @@ def ingest(
         f"[bold]{mode}[/bold] — processed={rep.processed} "
         f"todos={rep.todos_upserted} notes={rep.notes_written} skipped={rep.skipped}"
     )
+
+
+@app.command()
+def tags() -> None:
+    """Regenerate the vault tag index page."""
+    from .reports import generate_tag_index
+
+    p = generate_tag_index(get_settings().vault_notes_dir)
+    rprint(f"[green]tag index[/green] -> {p}")
+
+
+@app.command()
+def weekly() -> None:
+    """Generate a weekly review digest into the vault."""
+    from .reports import weekly_digest
+
+    p = weekly_digest(get_settings())
+    rprint(f"[green]weekly[/green] -> {p or 'no recent notes'}")
 
 
 @app.command()
