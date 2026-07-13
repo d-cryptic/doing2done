@@ -154,6 +154,37 @@ def ingest(
 
 
 @app.command()
+def ask(question: str = typer.Argument(..., help="Your question about your notes.")) -> None:
+    """Ask a question answered from your vault (RAG)."""
+    from .ask import ask as ask_notes
+
+    s = get_settings()
+    r = ask_notes(question, s.vault_notes_dir, s)
+    rprint(f"\n{r['answer']}\n")
+    if r.get("sources"):
+        rprint("[dim]sources: " + ", ".join(r["sources"]) + "[/dim]")
+
+
+@app.command("enrich-links")
+def enrich_links_cmd(limit: int = typer.Option(0, help="Max notes to enrich (0=all).")) -> None:
+    """Fetch + summarize URLs found in notes."""
+    from .enrich import enrich_links
+
+    s = get_settings()
+    n = enrich_links(s.vault_notes_dir, s, limit=limit or None)
+    rprint(f"[green]enriched[/green] -> {n} notes")
+
+
+@app.command()
+def insights() -> None:
+    """Generate an LLM insight report over all notes."""
+    from .reports import generate_insights
+
+    p = generate_insights(get_settings())
+    rprint(f"[green]insights[/green] -> {p or 'no notes'}")
+
+
+@app.command()
 def dedup() -> None:
     """Regenerate the near-duplicate notes report."""
     from .reports import generate_duplicates_page
