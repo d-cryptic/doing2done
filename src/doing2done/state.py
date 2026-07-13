@@ -101,6 +101,14 @@ class State:
                 (note_id, modified, md_path),
             )
 
+    def recently_completed(self, days: int = 1) -> list[sqlite3.Row]:
+        with self._conn() as c:
+            return c.execute(
+                "SELECT title FROM task_map WHERE completed = 1 "
+                "AND updated_at >= datetime('now', ?)",
+                (f"-{days} day",),
+            ).fetchall()
+
     def get_md_path(self, note_id: str) -> str | None:
         with self._conn() as c:
             row = c.execute(
