@@ -17,6 +17,8 @@ class NoteResult(BaseModel):
     tags: list[str] = Field(default_factory=list)
     todos: list[Todo] = Field(default_factory=list)
     markdown: str = Field("", description="clean markdown body for the note vault")
+    summary: str = Field("", description="one-line TL;DR of the note")
+    links: list[str] = Field(default_factory=list, description="URLs found in the note")
     is_todo_only: bool = False
 
     @field_validator("title", mode="before")
@@ -24,7 +26,7 @@ class NoteResult(BaseModel):
     def _coerce_title(cls, v: object) -> str:
         return str(v) if v else "Untitled"
 
-    @field_validator("tags", "todos", mode="before")
+    @field_validator("tags", "todos", "links", mode="before")
     @classmethod
     def _none_to_list(cls, v: object) -> object:
         return v or []

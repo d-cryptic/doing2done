@@ -13,6 +13,9 @@ cd "$REPO" || exit 1
 # 1) ingest (writes todos to TickTick + notes/diagrams to the vault; reconciles deletes)
 uv run d2d ingest --apply
 
+# 1b) daily brief with rollover (idempotent per day: skips if the note exists)
+uv run d2d daily --target both || true
+
 # 2) publish only if the vault changed
 cd "$VAULT" || exit 1
 if [[ -n "$(git status --porcelain)" ]]; then
