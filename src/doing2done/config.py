@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     cf_admin_api_token: str = ""
     cf_access_client_id: str = ""
     cf_access_client_secret: str = ""
-    cf_account_id: str = "1c63a21104bcdfd82af9644b7eeed833"
+    cf_account_id: str = ""  # your Cloudflare account id
     cf_pages_project: str = "doing2done-vault"
-    cf_access_allowed_email: str = "barundebnath91@gmail.com"
+    cf_access_allowed_email: str = ""  # email allowed through Cloudflare Access
 
     # ── LLM classifier (cheap model) ──
     llm_provider: str = "openai"  # openai(-compatible) | gemini

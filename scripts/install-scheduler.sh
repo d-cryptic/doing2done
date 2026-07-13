@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Install the doing2done LaunchAgent (runs every 30 min).
+# Install the doing2done LaunchAgent (every 30 min), paths derived from this repo.
 set -euo pipefail
-SRC="/Users/barun/Developers/personal/doing2done/scripts/com.doing2done.sync.plist"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DST="$HOME/Library/LaunchAgents/com.doing2done.sync.plist"
-cp "$SRC" "$DST"
+mkdir -p "$HOME/Library/LaunchAgents"
+sed "s#__REPO__#$REPO#g" "$REPO/scripts/com.doing2done.sync.plist.tmpl" > "$DST"
 launchctl unload "$DST" 2>/dev/null || true
 launchctl load "$DST"
-echo "Loaded com.doing2done.sync (every 30 min)."
-echo "Run once now:  launchctl start com.doing2done.sync"
-echo "Tail logs:     tail -f /Users/barun/Developers/personal/doing2done/data/sync.log"
-echo "Stop/remove:   launchctl unload $DST && rm $DST"
+echo "Loaded com.doing2done.sync (every 30 min). Logs: $REPO/data/sync.log"
+echo "Run now: launchctl start com.doing2done.sync"
