@@ -67,5 +67,26 @@ class Cloudflare:
             },
         )
 
+    # ── Email Routing ──
+    def zone_id(self, domain: str) -> str | None:
+        r = self._http.get("/zones", params={"name": domain})
+        r.raise_for_status()
+        res = r.json()["result"]
+        return res[0]["id"] if res else None
+
+    def enable_email_routing(self, zone: str) -> None:
+        self._http.post(f"/zones/{zone}/email/routing/enable")
+
+    def route_to_worker(self, zone: str, address: str, worker: str) -> dict:
+        return self._post(
+            f"/zones/{zone}/email/routing/rules",
+            {
+                "name": f"doing2done: {address}",
+                "enabled": True,
+                "matchers": [{"type": "literal", "field": "to", "value": address}],
+                "actions": [{"type": "worker", "value": [worker]}],
+            },
+        )
+
     def close(self) -> None:
         self._http.close()

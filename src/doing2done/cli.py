@@ -87,6 +87,55 @@ def cf_check() -> None:
         cf.close()
 
 
+@app.command()
+def shortcuts() -> None:
+    """Print ready-to-paste capture/ask config (URLs + token) for Apple Shortcuts."""
+    s = get_settings()
+    if not s.worker_url or not s.ingest_token:
+        rprint("[red]Set WORKER_URL + INGEST_TOKEN in .env first.[/red]")
+        raise typer.Exit(1)
+    rprint("[bold]Capture[/bold] (share-sheet / Siri)")
+    rprint(f"  POST {s.worker_url}/capture")
+    rprint(f"  Header  Authorization: Bearer {s.ingest_token}")
+    rprint('  Body    {"source":"shortcut","text":[Shortcut Input]}')
+    rprint("\n[bold]Ask my notes[/bold]")
+    rprint(f"  GET  {s.worker_url}/ask?q=[Provided Input]")
+    rprint(f"  Header  Authorization: Bearer {s.ingest_token}")
+    rprint("\n[bold]WhatsApp webhook[/bold] (Twilio sandbox)")
+    rprint(f"  {s.worker_url}/whatsapp/{s.ingest_token}")
+    rprint(f"\n[bold]Web ask page[/bold]\n  {s.worker_url}/app")
+
+
+@app.command("wire-email")
+def wire_email(
+    address: str = typer.Argument(..., help="e.g. capture@your-domain.com"),
+) -> None:
+    """Route an email address to the Worker via Cloudflare Email Routing (API)."""
+    s = get_settings()
+    domain = address.split("@", 1)[1]
+    cf = Cloudflare(s.cf_admin_api_token, s.cf_account_id)
+    try:
+        zone = cf.zone_id(domain)
+        if not zone:
+            rprint(f"[red]No Cloudflare zone for {domain}.[/red]")
+            raise typer.Exit(1)
+        try:
+            cf.enable_email_routing(zone)
+            cf.route_to_worker(
+                zone, address, s.cf_pages_project.replace("-vault", "") or "doing2done"
+            )
+            rprint(f"[green]email routed[/green] {address} -> Worker")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 403:
+                rprint("[yellow]403[/yellow] — token needs 'Zone > Email Routing Rules > Edit'.")
+                rprint("  Add that scope to CF_ADMIN_API_TOKEN and re-run,")
+                rprint("  or configure it in the Cloudflare dashboard.")
+            else:
+                raise
+    finally:
+        cf.close()
+
+
 @app.command("gate-site")
 def gate_site(domain: str = typer.Option(..., help="e.g. doing2done-vault.pages.dev")) -> None:
     """Create/ensure an Access app for DOMAIN allowing only your email."""
