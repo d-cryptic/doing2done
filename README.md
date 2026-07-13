@@ -34,6 +34,7 @@ uv run d2d gate-site --domain doing2done-vault.pages.dev   # Access: only your e
 uv run d2d daily                                          # daily brief + rollover -> Apple Notes + vault
 uv run d2d tags                                           # regenerate the vault tag index
 uv run d2d weekly                                         # LLM weekly review digest
+uv run d2d relate                                         # backlinks/related-notes (TF-IDF + tags)
 ```
 
 ## Features
@@ -44,7 +45,9 @@ uv run d2d weekly                                         # LLM weekly review di
 - **TickTick** — todos smart-routed into your lists; reconciliation completes removed/deleted items.
 - **Daily note + rollover** — `d2d daily` builds a templated brief (focus + rolled-over overdue) into Apple Notes and the vault.
 - **Vault** — VitePress site with search, tag index, and daily notes, gated by Cloudflare Access.
-- **Scheduler** — launchd runs ingest + daily + deploy every 30 min (FDA-only, no Automation for reads).
+- **Related notes / graph** — TF-IDF + shared-tag backlinks injected per note (semantic discovery, no embeddings API).
+- **Two-way reflection** — daily note's Done section shows recently-completed tasks; TickTick completions drop from the rollover automatically.
+- **Scheduler** — launchd runs ingest + daily + relate + deploy every 30 min (FDA-only, no Automation for reads).
 
 ## Layout
 

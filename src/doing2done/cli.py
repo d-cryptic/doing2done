@@ -77,8 +77,10 @@ def deploy_site() -> None:
     import subprocess
 
     s = get_settings()
+    from .relate import relate_vault
     from .reports import generate_tag_index
 
+    relate_vault(s.vault_notes_dir)
     generate_tag_index(s.vault_notes_dir)
     subprocess.run(["npm", "run", "docs:build"], cwd=s.vault_dir, check=True)
     env = {
@@ -129,6 +131,15 @@ def ingest(
 
 
 @app.command()
+def relate() -> None:
+    """Compute related-notes/backlinks (TF-IDF + shared tags) and inject into the vault."""
+    from .relate import relate_vault
+
+    n = relate_vault(get_settings().vault_notes_dir)
+    rprint(f"[green]related[/green] -> {n} notes linked")
+
+
+@app.command()
 def tags() -> None:
     """Regenerate the vault tag index page."""
     from .reports import generate_tag_index
@@ -157,9 +168,10 @@ def daily(
     if not tok:
         rprint("[red]No TickTick token — run `d2d auth`.[/red]")
         raise typer.Exit(1)
-    tt = TickTickClient(tok["access_token"], State(s.state_db))
+    state = State(s.state_db)
+    tt = TickTickClient(tok["access_token"], state)
     try:
-        title, md = daily_mod.build_brief(tt)
+        title, md = daily_mod.build_brief(tt, state=state)
     finally:
         tt.close()
     if target in ("vault", "both"):
