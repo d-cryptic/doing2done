@@ -13,6 +13,8 @@ Open `https://<worker-subdomain>.workers.dev/app` on your phone — it's behind
 **Cloudflare Access** (only your email). A chat box for ask-my-notes + a quick-capture
 box. Bookmark it / add to home screen.
 
+> Run **`d2d shortcuts`** to print your URLs + token pre-filled for the steps below.
+
 ## 2. Apple Shortcuts (most native)
 Create two Shortcuts (Shortcuts app → +):
 
@@ -34,6 +36,7 @@ Create two Shortcuts (Shortcuts app → +):
 ## 3. Email capture
 Cloudflare Dashboard → your domain → **Email Routing** → **Email Workers** →
 route an address (e.g. `capture@your-domain`) to the **doing2done** Worker.
+Or run **`d2d wire-email capture@your-domain`** (needs the token to have *Zone > Email Routing Rules > Edit*).
 Then email a thought to that address; the Worker's `email()` handler queues it.
 
 ## 4. WhatsApp (no Meta Business verification — Twilio Sandbox)
