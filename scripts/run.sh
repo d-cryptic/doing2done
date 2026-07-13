@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# doing2done scheduled sync: ingest -> deploy (if changed) -> best-effort git push.
+set -uo pipefail
+export PATH="/Users/barun/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+
+REPO="/Users/barun/Developers/personal/doing2done"
+VAULT="/Users/barun/Developers/personal/doing2done-vault"
+GIT_ID=(-c user.email="barun.debnath2001@gmail.com" -c user.name="Barun Debnath")
+
+echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) doing2done sync ==="
+cd "$REPO" || exit 1
+
+# 1) ingest (writes todos to TickTick + notes/diagrams to the vault; reconciles deletes)
+uv run d2d ingest --apply
+
+# 2) publish only if the vault changed
+cd "$VAULT" || exit 1
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "vault changed -> deploy + push"
+  ( cd "$REPO" && uv run d2d deploy-site )
+  git add -A
+  git "${GIT_ID[@]}" commit -m "content: scheduled sync $(date -u +%Y-%m-%dT%H:%MZ)" || true
+  git push || true   # best-effort; deploy already published the site
+else
+  echo "no vault changes"
+fi
+echo "=== done ==="
