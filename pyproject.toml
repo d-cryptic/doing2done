@@ -15,10 +15,12 @@ dependencies = [
 
 [project.optional-dependencies]
 ocr = ["pyobjc-framework-Vision>=10.3", "pyobjc-framework-Quartz>=10.3"]
+mcp = ["mcp>=1.2"]
 dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
 
 [project.scripts]
 d2d = "doing2done.cli:app"
+d2d-mcp = "doing2done.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]
