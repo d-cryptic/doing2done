@@ -11,17 +11,20 @@ from .models import NoteResult
 SYSTEM = """You convert a raw note (OCR'd handwriting) into structured JSON.
 Return ONLY JSON matching this schema:
 {
-  "title": string,
+  "title": string,                // ALWAYS generate a concise, descriptive title (never "Untitled")
   "date": string|null,            // ISO date if the note implies one
-  "tags": string[],
+  "tags": string[],               // 2-5 lowercase topical tags
+  "summary": string,              // one-line TL;DR of what this note is about
+  "links": string[],              // any URLs mentioned
   "todos": [                      // extract every actionable item
     {"title": string, "due_date": string|null, "priority": "none|low|medium|high",
      "project": string|null}
   ],
   "markdown": string,             // the note body as clean markdown (exclude pure todo lists)
-  "is_todo_only": boolean         // true if the note is ONLY action items, no prose worth archiving
+  "is_todo_only": boolean         // true if ONLY action items, no prose worth archiving
 }
-Infer due_date from phrases like "by Friday". Keep markdown faithful but tidy."""
+Infer due_date from phrases like "by Friday". Generate a meaningful title even for
+messy notes. Keep markdown faithful but tidy."""
 
 
 def _gemini(text: str, api_key: str, model: str) -> str:

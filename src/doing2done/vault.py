@@ -48,7 +48,13 @@ def write_note(
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"{note_stem(result, note_id)}.md"
     fm = render_frontmatter(result.title, result.date, result.tags)
-    body = (result.markdown or "").strip() + extra_markdown
+    parts = []
+    if result.summary:
+        parts.append(f"> **TL;DR** {result.summary}\n")
+    parts.append((result.markdown or "").strip())
+    if result.links:
+        parts.append("\n## Links\n" + "\n".join(f"- <{u}>" for u in result.links))
+    body = "\n\n".join(p for p in parts if p) + extra_markdown
     path.write_text(fm + sanitize_body(body).strip() + "\n")
     return str(path)
 
