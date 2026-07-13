@@ -128,7 +128,8 @@ def wire_email(
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
                 rprint("[yellow]403[/yellow] — token needs 'Zone > Email Routing Rules > Edit'.")
-                rprint("  Add that scope to CF_ADMIN_API_TOKEN and re-run, or set it in the dashboard.")
+                rprint("  Add that scope to CF_ADMIN_API_TOKEN and re-run,")
+                rprint("  or configure it in the Cloudflare dashboard.")
             else:
                 raise
     finally:
