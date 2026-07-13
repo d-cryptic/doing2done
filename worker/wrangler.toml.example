@@ -5,7 +5,7 @@ compatibility_date = "2024-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "doing2done"
-database_id = "b5044180-8729-4d58-97ce-ea0dc710b25d"
+database_id = "<YOUR_D1_DATABASE_ID>"
 
 # [[r2_buckets]]      # add once R2 scope is available
 # binding = "ASSETS"

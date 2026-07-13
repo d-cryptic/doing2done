@@ -1,5 +1,10 @@
 # doing2done
 
+> **macOS only** · Turn handwritten **Apple Notes** into **smart TickTick todos** + a private,
+> searchable **note vault**. Ink in, done out.
+>
+> **New here? → [SETUP.md](SETUP.md)** for the full first-run guide. TL;DR: `uv run d2d init`.
+
 Turn handwritten **Apple Notes** into **smart TickTick todos** + a private, hosted
 **note vault**. Ink in, done out.
 

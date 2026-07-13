@@ -37,6 +37,25 @@ def _valid_ticktick(s, state) -> TickTickClient | None:
 
 
 @app.command()
+def init() -> None:
+    """Bootstrap a fresh clone: scaffold the vault, .env, and worker config."""
+    from .init import init_project
+
+    for step in init_project(get_settings()):
+        rprint(f"[green]•[/green] {step}")
+    rprint("\n[bold]Next (manual):[/bold]")
+    rprint("  1. Fill .env — TickTick, OpenRouter, Cloudflare token + account id, your email")
+    rprint("  2. Provision Cloudflare (once):")
+    rprint("       cd worker && wrangler d1 create doing2done \\")
+    rprint("         && wrangler r2 bucket create doing2done-assets \\")
+    rprint("         && wrangler vectorize create doing2done-notes \\")
+    rprint("              --dimensions=768 --metric=cosine")
+    rprint("     then set database_id in worker/wrangler.toml, and: wrangler deploy")
+    rprint("  3. Grant Full Disk Access to /bin/bash (System Settings → Privacy)")
+    rprint("  4. uv run d2d auth → d2d cf-check → d2d ingest --apply → d2d deploy-site")
+
+
+@app.command()
 def auth() -> None:
     """One-time TickTick OAuth. Saves the token locally."""
     s = get_settings()
