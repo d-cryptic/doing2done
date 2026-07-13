@@ -271,7 +271,7 @@ def capture() -> None:
     state = State(s.state_db)
     svc = _svc(s, state)
     try:
-        n = cap.poll_telegram(s, state, svc)
+        n = cap.process_captures(s, state, svc)
     finally:
         if svc:
             svc.close()
