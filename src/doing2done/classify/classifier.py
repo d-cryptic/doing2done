@@ -4,8 +4,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 
-import httpx
-
+from ..retry import retrying_post
 from .models import NoteResult
 
 SYSTEM = """You convert a raw note (OCR'd handwriting) into structured JSON.
@@ -32,7 +31,7 @@ Generate a meaningful title even for messy notes. Keep markdown faithful but tid
 
 def _gemini(text: str, api_key: str, model: str) -> str:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    r = httpx.post(
+    r = retrying_post(
         url,
         params={"key": api_key},
         json={
@@ -42,7 +41,6 @@ def _gemini(text: str, api_key: str, model: str) -> str:
         },
         timeout=60,
     )
-    r.raise_for_status()
     return r.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
@@ -52,7 +50,7 @@ def _openai(text: str, api_key: str, model: str, base_url: str = "") -> str:
     if "openrouter" in (base_url or ""):
         headers["HTTP-Referer"] = "https://github.com/d-cryptic/doing2done"
         headers["X-Title"] = "doing2done"
-    r = httpx.post(
+    r = retrying_post(
         url,
         headers=headers,
         json={
@@ -65,7 +63,6 @@ def _openai(text: str, api_key: str, model: str, base_url: str = "") -> str:
         },
         timeout=60,
     )
-    r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
 

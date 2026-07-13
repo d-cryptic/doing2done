@@ -1,6 +1,7 @@
 """doing2done command line — run `d2d --help`."""
 from __future__ import annotations
 
+import httpx
 import typer
 from rich import print as rprint
 
@@ -13,6 +14,26 @@ from .ticktick import oauth
 from .ticktick.client import TickTickClient
 
 app = typer.Typer(add_completion=False, help="Apple Notes -> smart TickTick + note vault.")
+
+
+def _valid_ticktick(s, state) -> TickTickClient | None:
+    """Load the TickTick client, refreshing the token once on 401."""
+    tok = oauth.load_token(s.ticktick_token_path)
+    if not tok:
+        return None
+    tt = TickTickClient(tok["access_token"], state)
+    try:
+        tt.projects()  # probe validity
+        return tt
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            new = oauth.refresh(
+                s.ticktick_client_id, s.ticktick_client_secret, s.ticktick_token_path
+            )
+            if new:
+                tt.close()
+                return TickTickClient(new["access_token"], state)
+        raise
 
 
 @app.command()
@@ -111,11 +132,10 @@ def ingest(
     state = State(s.state_db)
     tt = None
     if apply:
-        tok = oauth.load_token(s.ticktick_token_path)
-        if not tok:
+        tt = _valid_ticktick(s, state)
+        if tt is None:
             rprint("[red]No TickTick token — run `d2d auth` first.[/red]")
             raise typer.Exit(1)
-        tt = TickTickClient(tok["access_token"], state)
     try:
         rep = run_ingest(
             s, state, tt, apply=apply, limit=limit or None, force=force, media_only=media_only
@@ -169,7 +189,10 @@ def daily(
         rprint("[red]No TickTick token — run `d2d auth`.[/red]")
         raise typer.Exit(1)
     state = State(s.state_db)
-    tt = TickTickClient(tok["access_token"], state)
+    tt = _valid_ticktick(s, state)
+    if tt is None:
+        rprint("[red]No TickTick token — run `d2d auth`.[/red]")
+        raise typer.Exit(1)
     try:
         title, md = daily_mod.build_brief(tt, state=state)
     finally:

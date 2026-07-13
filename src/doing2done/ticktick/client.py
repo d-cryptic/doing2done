@@ -17,6 +17,7 @@ class TickTickClient:
             base_url=BASE,
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=30,
+            transport=httpx.HTTPTransport(retries=3),
         )
         self.state = state
 

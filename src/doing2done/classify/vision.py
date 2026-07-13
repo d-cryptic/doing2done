@@ -5,7 +5,7 @@ import base64
 import json
 from pathlib import Path
 
-import httpx
+from ..retry import retrying_post
 
 PROMPT = (
     "This is one page from a handwritten Apple Notes note. Return ONLY JSON:\n"
@@ -24,7 +24,7 @@ def describe_page(png_path: str | Path, *, api_key: str, model: str, base_url: s
     if "openrouter" in (base_url or ""):
         headers["HTTP-Referer"] = "https://github.com/d-cryptic/doing2done"
         headers["X-Title"] = "doing2done"
-    r = httpx.post(
+    r = retrying_post(
         url,
         headers=headers,
         timeout=90,
@@ -42,7 +42,6 @@ def describe_page(png_path: str | Path, *, api_key: str, model: str, base_url: s
             ],
         },
     )
-    r.raise_for_status()
     data = json.loads(r.json()["choices"][0]["message"]["content"])
     return {
         "kind": str(data.get("kind", "")).strip(),
