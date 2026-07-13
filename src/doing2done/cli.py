@@ -110,16 +110,18 @@ def ingest(
             rprint("[red]No TickTick token — run `d2d auth` first.[/red]")
             raise typer.Exit(1)
         tt = TickTickClient(tok["access_token"], state)
-    rep = run_ingest(
-        s, state, tt, apply=apply, limit=limit or None, force=force, media_only=media_only
-    )
+    try:
+        rep = run_ingest(
+            s, state, tt, apply=apply, limit=limit or None, force=force, media_only=media_only
+        )
+    finally:
+        if tt:
+            tt.close()
     mode = "APPLIED" if apply else "DRY-RUN"
     rprint(
         f"[bold]{mode}[/bold] — processed={rep.processed} "
         f"todos={rep.todos_upserted} notes={rep.notes_written} skipped={rep.skipped}"
     )
-    if tt:
-        tt.close()
 
 
 if __name__ == "__main__":

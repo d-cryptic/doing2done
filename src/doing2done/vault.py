@@ -1,6 +1,7 @@
 """Write a classified note as clean Markdown into the VitePress vault."""
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 from pathlib import Path
@@ -31,16 +32,21 @@ def render_frontmatter(title: str, date: str | None, tags: list[str]) -> str:
     )
 
 
-def note_stem(result: NoteResult) -> str:
-    """Stable, date-prefixed file stem for a note (also names its asset folder)."""
+def note_stem(result: NoteResult, note_id: str = "") -> str:
+    """Stable, unique file stem: date + slug + short note-id hash (avoids collisions)."""
     prefix = (result.date or "").split("T")[0]
-    return f"{prefix}-{slugify(result.title)}".strip("-")
+    base = f"{prefix}-{slugify(result.title)}".strip("-")
+    if note_id:
+        base += "-" + hashlib.sha1(note_id.encode()).hexdigest()[:6]
+    return base
 
 
-def write_note(result: NoteResult, notes_dir: str, extra_markdown: str = "") -> str:
+def write_note(
+    result: NoteResult, notes_dir: str, extra_markdown: str = "", note_id: str = ""
+) -> str:
     d = Path(notes_dir)
     d.mkdir(parents=True, exist_ok=True)
-    path = d / f"{note_stem(result)}.md"
+    path = d / f"{note_stem(result, note_id)}.md"
     fm = render_frontmatter(result.title, result.date, result.tags)
     body = (result.markdown or "").strip() + extra_markdown
     path.write_text(fm + sanitize_body(body).strip() + "\n")

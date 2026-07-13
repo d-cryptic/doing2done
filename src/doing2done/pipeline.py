@@ -32,6 +32,7 @@ def _persist_diagrams(
     stem: str, items: list[NoteMedia], notes_dir: str, settings: Settings
 ) -> tuple[str, int]:
     """Vision-caption each render, dedup by content, persist distinct pages only."""
+    import hashlib
     from difflib import SequenceMatcher
 
     from .classify.vision import describe_page
@@ -47,9 +48,16 @@ def _persist_diagrams(
     asset_dir.mkdir(parents=True, exist_ok=True)
     out = ["\n\n## Diagrams\n"]
     kept: list[str] = []
+    seen_img: set[str] = set()
     count = 0
     for m in drawings:
         for src in m.png_paths:
+            try:
+                img_hash = hashlib.md5(Path(src).read_bytes()).hexdigest()
+            except OSError:
+                continue
+            if img_hash in seen_img:
+                continue
             try:
                 desc = describe_page(
                     src,
@@ -63,6 +71,7 @@ def _persist_diagrams(
             # skip near-duplicate renders of the same page
             if norm and any(SequenceMatcher(None, norm, k).ratio() >= 0.85 for k in kept):
                 continue
+            seen_img.add(img_hash)
             kept.append(norm)
             count += 1
             dest = asset_dir / f"diagram-{count}.png"
@@ -180,11 +189,21 @@ def run_ingest(
             md_path = None
             if not result.is_todo_only or has_media:
                 if apply:
-                    stem = note_stem(result)
+                    stem = note_stem(result, note.id)
                     diagram_md, ndraw = _persist_diagrams(
                         stem, drawings, settings.vault_notes_dir, settings
                     )
-                    md_path = write_note(result, settings.vault_notes_dir, diagram_md)
+                    old_md = state.get_md_path(note.id)
+                    md_path = write_note(
+                        result, settings.vault_notes_dir, diagram_md, note_id=note.id
+                    )
+                    if old_md and old_md != md_path and Path(old_md).exists():
+                        Path(old_md).unlink()  # note kept, title changed -> drop stale file
+                        old_assets = (
+                            Path(settings.vault_notes_dir) / "assets" / Path(old_md).stem
+                        )
+                        if old_assets.exists():
+                            shutil.rmtree(old_assets)
                     report.diagrams += ndraw
                 else:
                     report.diagrams += sum(len(m.png_paths) for m in drawings)
@@ -208,13 +227,14 @@ def run_ingest(
                     if row["key"] in new_keys:
                         continue
                     pid = resolve_task_pid(row["task_id"], row["project_id"])
-                    if pid:
-                        try:
-                            tt.complete(pid, row["task_id"])
-                        except Exception:
-                            pass
-                    state.mark_task_completed(row["key"])
-                    report.completed += 1
+                    if not pid:
+                        continue  # can't complete remotely -> retry next run
+                    try:
+                        tt.complete(pid, row["task_id"])
+                        state.mark_task_completed(row["key"])
+                        report.completed += 1
+                    except Exception:
+                        pass
 
             if apply:
                 state.mark_note(note.id, note.modified, md_path)
@@ -228,15 +248,20 @@ def run_ingest(
         for row in state.all_seen_notes():
             if row["note_id"] in live_ids:
                 continue
+            all_done = True
             for trow in state.tasks_for_note(row["note_id"]):
                 pid = resolve_task_pid(trow["task_id"], trow["project_id"])
-                if pid:
-                    try:
-                        tt.complete(pid, trow["task_id"])
-                    except Exception:
-                        pass
-                state.mark_task_completed(trow["key"])
-                report.completed += 1
+                if not pid:
+                    all_done = False
+                    continue
+                try:
+                    tt.complete(pid, trow["task_id"])
+                    state.mark_task_completed(trow["key"])
+                    report.completed += 1
+                except Exception:
+                    all_done = False
+            if not all_done:
+                continue  # keep tracking; retry completing its tasks next run
             if row["md_path"]:
                 try:
                     archive_note(

@@ -101,6 +101,13 @@ class State:
                 (note_id, modified, md_path),
             )
 
+    def get_md_path(self, note_id: str) -> str | None:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT md_path FROM notes_seen WHERE note_id = ?", (note_id,)
+            ).fetchone()
+            return row["md_path"] if row else None
+
     def all_seen_notes(self) -> list[sqlite3.Row]:
         with self._conn() as c:
             return c.execute("SELECT note_id, md_path FROM notes_seen").fetchall()

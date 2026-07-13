@@ -43,6 +43,8 @@ def _pb_fields(b: bytes) -> Iterator[tuple[int, int, bytes | int]]:
         if wt == 0:  # varint
             v = s = 0
             while True:
+                if i >= n:
+                    return
                 v |= (b[i] & 0x7F) << s
                 s += 7
                 brk = not b[i] & 0x80
@@ -53,6 +55,8 @@ def _pb_fields(b: bytes) -> Iterator[tuple[int, int, bytes | int]]:
         elif wt == 2:  # length-delimited
             ln = s = 0
             while True:
+                if i >= n:
+                    return
                 ln |= (b[i] & 0x7F) << s
                 s += 7
                 brk = not b[i] & 0x80
@@ -112,7 +116,10 @@ def list_notes(container: Path = NOTES_CONTAINER) -> list[RawNote]:
         folder_name = folders.get(r["folder"], "")
         if folder_name == "Recently Deleted":
             continue  # treat as deleted -> reconciliation archives it
-        text = _note_text(_decompress(r["data"])) if r["data"] else ""
+        try:
+            text = _note_text(_decompress(r["data"])) if r["data"] else ""
+        except Exception:
+            text = ""  # a single corrupt blob must not abort the whole read
         name = r["title"]
         if not name:  # null title -> derive from first non-empty line
             first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
