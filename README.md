@@ -35,6 +35,12 @@ uv run d2d daily                                          # daily brief + rollov
 uv run d2d tags                                           # regenerate the vault tag index
 uv run d2d weekly                                         # LLM weekly review digest
 uv run d2d relate                                         # backlinks/related-notes (TF-IDF + tags)
+uv run d2d ask "what did I decide about X?"               # RAG over your notes
+uv run d2d capture                                        # pull Telegram messages -> todos/notes
+uv run d2d dedup                                          # near-duplicate notes report
+uv run d2d enrich-links                                   # fetch + summarize URLs in notes
+uv run d2d insights                                       # LLM themes/patterns report
+uv run d2d analytics / timeline / graph                   # dashboards + views
 ```
 
 ## Features
