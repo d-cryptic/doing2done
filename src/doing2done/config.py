@@ -1,6 +1,7 @@
 """Typed settings loaded from environment / .env (never hardcode secrets)."""
 from __future__ import annotations
 
+import subprocess
 from functools import lru_cache
 
 from pydantic import model_validator
@@ -49,6 +50,24 @@ class Settings(BaseSettings):
         return self
 
 
+def _resolve_op(value: str) -> str:
+    """Resolve a 1Password `op://vault/item/field` reference via the op CLI."""
+    if not value.startswith("op://"):
+        return value
+    try:
+        out = subprocess.run(
+            ["op", "read", value], capture_output=True, text=True, timeout=20
+        )
+        return out.stdout.strip() if out.returncode == 0 else value
+    except Exception:
+        return value
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    # Any field may be a 1Password reference (op://...) — resolve at runtime.
+    for name, val in list(s.__dict__.items()):
+        if isinstance(val, str) and val.startswith("op://"):
+            object.__setattr__(s, name, _resolve_op(val))
+    return s
