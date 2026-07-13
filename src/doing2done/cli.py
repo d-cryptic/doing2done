@@ -103,6 +103,9 @@ def deploy_site() -> None:
 
     relate_vault(s.vault_notes_dir)
     generate_tag_index(s.vault_notes_dir)
+    from .reports import generate_duplicates_page
+
+    generate_duplicates_page(s.vault_notes_dir)
     subprocess.run(["npm", "run", "docs:build"], cwd=s.vault_dir, check=True)
     env = {
         **os.environ,
@@ -148,6 +151,31 @@ def ingest(
         f"[bold]{mode}[/bold] — processed={rep.processed} "
         f"todos={rep.todos_upserted} notes={rep.notes_written} skipped={rep.skipped}"
     )
+
+
+@app.command()
+def dedup() -> None:
+    """Regenerate the near-duplicate notes report."""
+    from .reports import generate_duplicates_page
+
+    p = generate_duplicates_page(get_settings().vault_notes_dir)
+    rprint(f"[green]duplicates[/green] -> {p}")
+
+
+@app.command()
+def capture() -> None:
+    """Pull queued Telegram messages into todos + notes."""
+    from . import capture as cap
+
+    s = get_settings()
+    state = State(s.state_db)
+    tt = _valid_ticktick(s, state)
+    try:
+        n = cap.poll_telegram(s, state, tt)
+    finally:
+        if tt:
+            tt.close()
+    rprint(f"[green]capture[/green] -> {n} message(s) handled")
 
 
 @app.command()
