@@ -17,6 +17,7 @@ class Cloudflare:
             base_url=API,
             headers={"Authorization": f"Bearer {api_token}"},
             timeout=45,
+            transport=httpx.HTTPTransport(retries=3),
         )
 
     def _post(self, path: str, body: dict) -> dict:

@@ -95,3 +95,28 @@ def load_token(token_path: str) -> dict | None:
     if not p.exists():
         return None
     return json.loads(p.read_text())
+
+
+def refresh(client_id: str, client_secret: str, token_path: str) -> dict | None:
+    """Refresh the access token using the stored refresh_token, if present."""
+    tok = load_token(token_path)
+    if not tok or "refresh_token" not in tok:
+        return None
+    resp = httpx.post(
+        TOKEN_URL,
+        data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "grant_type": "refresh_token",
+            "refresh_token": tok["refresh_token"],
+            "scope": SCOPE,
+        },
+        auth=(client_id, client_secret),
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        return None
+    new = resp.json()
+    new.setdefault("refresh_token", tok["refresh_token"])
+    Path(token_path).write_text(json.dumps(new, indent=2))
+    return new

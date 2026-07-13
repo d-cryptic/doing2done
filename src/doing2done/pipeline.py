@@ -217,6 +217,7 @@ def run_ingest(
                         due_date=todo.due_date,
                         priority=todo.priority,
                         project_id=resolve_pid(todo.project),
+                        items=todo.items,
                     )
                 report.todos_upserted += 1
 

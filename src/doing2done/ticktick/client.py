@@ -17,6 +17,7 @@ class TickTickClient:
             base_url=BASE,
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=30,
+            transport=httpx.HTTPTransport(retries=3),
         )
         self.state = state
 
@@ -54,6 +55,7 @@ class TickTickClient:
         due_date: str | None = None,
         priority: str = "none",
         project_id: str | None = None,
+        items: list[str] | None = None,
     ) -> str:
         """Create or update a task, deduped by (note_id, title)."""
         body: dict = {"title": title, "priority": PRIORITY.get(priority, 0)}
@@ -61,8 +63,17 @@ class TickTickClient:
             body["content"] = content
         if due_date:
             body["dueDate"] = due_date
+            # a non-midnight time -> timed task with a reminder at due time
+            time_part = due_date.split("T")[1][:8] if "T" in due_date else ""
+            if time_part and time_part != "00:00:00":
+                body["isAllDay"] = False
+                body["reminders"] = ["TRIGGER:PT0S"]
+            else:
+                body["isAllDay"] = True
         if project_id:
             body["projectId"] = project_id
+        if items:
+            body["items"] = [{"title": s} for s in items]
 
         existing = self.state.get_task(note_id, title)
         if existing:
