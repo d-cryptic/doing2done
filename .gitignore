@@ -52,3 +52,5 @@ Thumbs.db
 # Cloudflare
 worker/.wrangler/
 worker/node_modules/
+
+.wrangler/
