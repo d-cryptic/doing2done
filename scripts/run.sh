@@ -19,6 +19,7 @@ uv run d2d ingest --apply || notify "scheduled ingest failed"
 
 # 1b) daily brief with rollover (idempotent per day: skips if the note exists)
 uv run d2d daily --target both || notify "daily brief failed"
+uv run d2d analytics || true
 
 # 2) publish only if the vault changed
 cd "$VAULT" || exit 1

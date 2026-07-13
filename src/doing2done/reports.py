@@ -137,3 +137,80 @@ def generate_insights(settings: Settings) -> str:
     dest = nd.parent / "insights.md"
     dest.write_text(f"# Insights\n\n{body}\n")
     return str(dest)
+
+
+def _bar(n: int, scale: int = 1) -> str:
+    return "█" * max(1, round(n / scale)) if n else ""
+
+
+def generate_analytics(settings: Settings, state, tt) -> str:
+    """Completion trend + open-task breakdown -> docs/analytics.md."""
+    out = ["# Analytics\n"]
+    comp = state.completions_by_day(14)
+    out.append("\n## Completed (last 14 days)\n")
+    mx = max((n for _, n in comp), default=1)
+    for d, n in comp:
+        out.append(f"- `{d}`  {_bar(n, max(1, mx // 20))}  {n}")
+    if not comp:
+        out.append("*no completions tracked yet*")
+    if tt is not None:
+        out.append("\n## Open tasks by list\n")
+        rows = []
+        for p in tt.projects():
+            try:
+                n = len([x for x in (tt.project_data(p["id"]).get("tasks") or [])
+                         if x.get("status", 0) == 0])
+            except Exception:
+                n = 0
+            if n:
+                rows.append((p["name"], n))
+        rows.sort(key=lambda x: -x[1])
+        mx2 = max((n for _, n in rows), default=1)
+        for name, n in rows:
+            out.append(f"- {name}  {_bar(n, max(1, mx2 // 20))}  {n}")
+    dest = Path(settings.vault_notes_dir).parent / "analytics.md"
+    dest.write_text("\n".join(out) + "\n")
+    return str(dest)
+
+
+def generate_timeline(notes_dir: str) -> str:
+    """Notes grouped by date -> docs/timeline.md."""
+    nd = Path(notes_dir)
+    by_date: dict[str, list[tuple[str, str]]] = {}
+    for md in nd.glob("*.md"):
+        if md.name == "index.md":
+            continue
+        fm = _frontmatter(md.read_text())
+        d = (fm.get("date", "") or "undated").split("T")[0]
+        by_date.setdefault(d, []).append((fm.get("title", md.stem), md.stem))
+    out = ["# Timeline\n"]
+    for d in sorted(by_date, reverse=True):
+        out.append(f"\n## {d}\n")
+        for title, stem in sorted(by_date[d]):
+            out.append(f"- [{title}](./notes/{stem})")
+    dest = nd.parent / "timeline.md"
+    dest.write_text("\n".join(out) + "\n")
+    return str(dest)
+
+
+def generate_graph(notes_dir: str) -> str:
+    """Mermaid backlink graph -> docs/graph.md."""
+    from .relate import top_edges
+
+    edges = top_edges(notes_dir)
+    ids: dict[str, str] = {}
+
+    def nid(title: str) -> str:
+        if title not in ids:
+            ids[title] = f"n{len(ids)}"
+        return ids[title]
+
+    lines = ["graph LR"]
+    for a, b, _ in edges:
+        safe_a = a.replace('"', "'")[:40]
+        safe_b = b.replace('"', "'")[:40]
+        lines.append(f'  {nid(a)}["{safe_a}"] --- {nid(b)}["{safe_b}"]')
+    body = "```mermaid\n" + "\n".join(lines) + "\n```" if edges else "*not enough notes yet*"
+    dest = Path(notes_dir).parent / "graph.md"
+    dest.write_text(f"# Note graph\n\nHow your notes connect (strongest links).\n\n{body}\n")
+    return str(dest)
