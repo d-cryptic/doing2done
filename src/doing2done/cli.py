@@ -189,6 +189,30 @@ def insights() -> None:
 
 
 @app.command()
+def push() -> None:
+    """Push Apple Notes payloads to the Cloudflare edge (D1)."""
+    from .notes import store
+
+    s = get_settings()
+    if not s.worker_url or not s.ingest_token:
+        rprint("[red]Set WORKER_URL + INGEST_TOKEN in .env.[/red]")
+        raise typer.Exit(1)
+    payload = [
+        {"note_id": n.id, "title": n.name, "body": n.body_html[:8000], "modified": n.modified}
+        for n in store.list_notes()
+    ]
+    total = 0
+    for i in range(0, len(payload), 20):  # batch for Workers AI subrequest limits
+        r = httpx.post(
+            f"{s.worker_url}/ingest", json=payload[i : i + 20],
+            headers={"Authorization": f"Bearer {s.ingest_token}"}, timeout=120,
+        )
+        r.raise_for_status()
+        total += r.json().get("embedded", 0)
+    rprint(f"[green]pushed[/green] -> {len(payload)} notes, {total} embedded")
+
+
+@app.command()
 def analytics() -> None:
     """Generate the completion + open-task analytics page."""
     from .reports import generate_analytics

@@ -1,0 +1,27 @@
+name = "doing2done"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "doing2done"
+database_id = "b5044180-8729-4d58-97ce-ea0dc710b25d"
+
+# [[r2_buckets]]      # add once R2 scope is available
+# binding = "ASSETS"
+# bucket_name = "doing2done-assets"
+
+# [[vectorize]]       # add once Vectorize scope is available
+# binding = "VEC"
+# index_name = "doing2done-notes"
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "doing2done-notes"
+
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "doing2done-assets"
