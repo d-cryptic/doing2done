@@ -76,3 +76,16 @@ src/doing2done/
 ```
 
 See the build plan for the full architecture and phase breakdown.
+
+## Todo providers (pluggable)
+
+The todo layer is provider-agnostic — pick your app via `TODO_PROVIDER`:
+
+| Provider | `TODO_PROVIDER` | Notes |
+|----------|-----------------|-------|
+| **TickTick** | `ticktick` | default; OAuth + smart lists |
+| **Apple Reminders** | `reminders` | macOS-native, no account (needs Automation permission) |
+| **Markdown file** | `markdown` | zero-dependency, git-friendly `todos.md` — works anywhere |
+
+Adding another backend (Todoist, CalDAV, Things…) is one file implementing the
+`TodoProvider` protocol in `src/doing2done/providers/`.

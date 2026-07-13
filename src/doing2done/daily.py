@@ -9,7 +9,7 @@ import datetime as dt
 import subprocess
 
 from .state import State
-from .ticktick.client import TickTickClient
+from .todo import TodoService
 
 TEMPLATE_SECTIONS = ("🎯 Focus (top 3)", "📋 Rolled over", "📝 Notes", "✅ Done")
 
@@ -27,88 +27,64 @@ def _parse_due(s: str | None) -> dt.date | None:
         return None
 
 
-def collect_open_tasks(tt: TickTickClient) -> list[dict]:
-    """All undone tasks across projects, with project name attached."""
-    out: list[dict] = []
-    for p in tt.projects():
-        try:
-            data = tt.project_data(p["id"])
-        except Exception:
-            continue
-        for t in data.get("tasks") or []:
-            if t.get("status", 0) == 0:  # 0 = not completed
-                out.append({**t, "_project": p["name"]})
-    return out
-
-
 def build_brief(
-    tt: TickTickClient, today: dt.date | None = None, state: State | None = None
+    svc: TodoService, today: dt.date | None = None, state: State | None = None
 ) -> tuple[str, str]:
     """Return (title, markdown) for today's brief with rolled-over tasks."""
     today = today or _today()
-    tasks = collect_open_tasks(tt)
+    pairs = svc.open_with_project()  # [(Task, project_name)]
 
-    def line(t: dict) -> str:
-        due = _parse_due(t.get("dueDate"))
+    def line(task, pname: str) -> str:
+        due = _parse_due(task.due_date)
         tag = ""
         if due and due < today:
             tag = f" ·  overdue {(today - due).days}d"
         elif due == today:
             tag = " ·  due today"
-        return f"- [ ] {t.get('title', '').strip()}  ({t['_project']}{tag})"
+        return f"- [ ] {task.title.strip()}  ({pname}{tag})"
 
-    overdue = [t for t in tasks if (_parse_due(t.get("dueDate")) or today) < today]
-    due_today = [t for t in tasks if _parse_due(t.get("dueDate")) == today]
-    high = [t for t in tasks if t.get("priority", 0) >= 5]
-
-    # Eisenhower: urgency (overdue/today) x importance (priority) -> score
-    def score(t: dict) -> float:
-        due = _parse_due(t.get("dueDate"))
+    def score(task) -> float:
+        due = _parse_due(task.due_date)
         urgency = 2 if (due and due < today) else 1 if due == today else 0
-        importance = t.get("priority", 0) / 5.0
-        return urgency + importance
+        return urgency + task.priority / 5.0
 
-    def quadrant(t: dict) -> str:
-        due = _parse_due(t.get("dueDate"))
+    def quadrant(task) -> str:
+        due = _parse_due(task.due_date)
         urgent = bool(due and due <= today)
-        important = t.get("priority", 0) >= 3
+        important = task.priority >= 3
         return {(True, True): "Q1 do-now", (False, True): "Q2 schedule",
                 (True, False): "Q3 quick", (False, False): "Q4 later"}[(urgent, important)]
 
-    focus_pool = sorted(overdue + due_today + high, key=score, reverse=True)
+    overdue = [(t, n) for t, n in pairs if (_parse_due(t.due_date) or today) < today]
+    due_today = [(t, n) for t, n in pairs if _parse_due(t.due_date) == today]
+    high = [(t, n) for t, n in pairs if t.priority >= 5]
+
+    focus_pool = sorted(overdue + due_today + high, key=lambda p: score(p[0]), reverse=True)
     seen: set[str] = set()
     focus = []
-    for t in focus_pool:
-        if t["id"] not in seen:
-            seen.add(t["id"])
-            t["_q"] = quadrant(t)
-            focus.append(t)
+    for task, name in focus_pool:
+        if task.id not in seen:
+            seen.add(task.id)
+            focus.append((task, name, quadrant(task)))
         if len(focus) == 3:
             break
 
-    rolled = [t for t in overdue if t["id"] not in {f["id"] for f in focus}]
+    focus_ids = {t.id for t, _, _ in focus}
+    rolled = [(t, n) for t, n in overdue if t.id not in focus_ids]
 
     title = f"Daily — {today.isoformat()}"
     md = [f"# {title}\n"]
-    def focus_line(t: dict) -> str:
-        q = t.get("_q", "")
-        return f"{line(t)}  `{q}`" if q else line(t)
-
     md.append(
         "## 🎯 Focus (top 3)\n"
-        + ("\n".join(focus_line(t) for t in focus) or "- [ ] ")
+        + ("\n".join(f"{line(t, n)}  `{q}`" for t, n, q in focus) or "- [ ] ")
     )
     md.append(
-        "\n## 📋 Rolled over\n" + ("\n".join(line(t) for t in rolled) or "*nothing overdue 🎉*")
+        "\n## 📋 Rolled over\n"
+        + ("\n".join(line(t, n) for t, n in rolled) or "*nothing overdue 🎉*")
     )
     md.append("\n## 📝 Notes\n\n")
-    done = []
-    if state is not None:
-        done = [r["title"] for r in state.recently_completed(1)]
-    md.append(
-        "## ✅ Done\n"
-        + ("\n".join(f"- [x] {t}" for t in done) if done else "*nothing yet*")
-    )
+    done = [r["title"] for r in state.recently_completed(1)] if state is not None else []
+    md.append("## ✅ Done\n" + ("\n".join(f"- [x] {d}" for d in done) if done else "*nothing yet*"))
     return title, "\n".join(md)
 
 

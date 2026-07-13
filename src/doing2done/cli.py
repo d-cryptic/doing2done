@@ -9,31 +9,18 @@ from . import daily as daily_mod
 from .cloudflare.deploy import Cloudflare
 from .config import get_settings
 from .pipeline import run_ingest
+from .providers import build_provider
 from .state import State
 from .ticktick import oauth
-from .ticktick.client import TickTickClient
+from .todo import TodoService
 
 app = typer.Typer(add_completion=False, help="Apple Notes -> smart TickTick + note vault.")
 
 
-def _valid_ticktick(s, state) -> TickTickClient | None:
-    """Load the TickTick client, refreshing the token once on 401."""
-    tok = oauth.load_token(s.ticktick_token_path)
-    if not tok:
-        return None
-    tt = TickTickClient(tok["access_token"], state)
-    try:
-        tt.projects()  # probe validity
-        return tt
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 401:
-            new = oauth.refresh(
-                s.ticktick_client_id, s.ticktick_client_secret, s.ticktick_token_path
-            )
-            if new:
-                tt.close()
-                return TickTickClient(new["access_token"], state)
-        raise
+def _svc(s, state) -> TodoService | None:
+    """Build the configured todo provider (TickTick/Reminders/Markdown) as a service."""
+    prov = build_provider(s, state)
+    return TodoService(prov, state, s.ticktick_default_project_id) if prov else None
 
 
 @app.command()
@@ -76,10 +63,13 @@ def ticktick_check() -> None:
     if not tok:
         rprint("[red]No token — run `d2d auth` first.[/red]")
         raise typer.Exit(1)
-    tt = TickTickClient(tok["access_token"], State(s.state_db))
-    for p in tt.projects():
-        rprint(f"  [green]{p['id']}[/green]  {p['name']}")
-    tt.close()
+    svc = _svc(s, State(s.state_db))
+    if svc is None:
+        rprint("[red]No provider configured / no token.[/red]")
+        raise typer.Exit(1)
+    for pr in svc.p.list_projects():
+        rprint(f"  [green]{pr.id}[/green]  {pr.name}")
+    svc.close()
 
 
 @app.command("cf-check")
@@ -156,19 +146,19 @@ def ingest(
     """Run the ingest pipeline. Dry-run by default; pass --apply to commit changes."""
     s = get_settings()
     state = State(s.state_db)
-    tt = None
+    svc = None
     if apply:
-        tt = _valid_ticktick(s, state)
-        if tt is None:
+        svc = _svc(s, state)
+        if svc is None:
             rprint("[red]No TickTick token — run `d2d auth` first.[/red]")
             raise typer.Exit(1)
     try:
         rep = run_ingest(
-            s, state, tt, apply=apply, limit=limit or None, force=force, media_only=media_only
+            s, state, svc, apply=apply, limit=limit or None, force=force, media_only=media_only
         )
     finally:
-        if tt:
-            tt.close()
+        if svc:
+            svc.close()
     mode = "APPLIED" if apply else "DRY-RUN"
     rprint(
         f"[bold]{mode}[/bold] — processed={rep.processed} "
@@ -238,12 +228,12 @@ def analytics() -> None:
 
     s = get_settings()
     state = State(s.state_db)
-    tt = _valid_ticktick(s, state)
+    svc = _svc(s, state)
     try:
-        p = generate_analytics(s, state, tt)
+        p = generate_analytics(s, state, svc)
     finally:
-        if tt:
-            tt.close()
+        if svc:
+            svc.close()
     rprint(f"[green]analytics[/green] -> {p}")
 
 
@@ -279,12 +269,12 @@ def capture() -> None:
 
     s = get_settings()
     state = State(s.state_db)
-    tt = _valid_ticktick(s, state)
+    svc = _svc(s, state)
     try:
-        n = cap.poll_telegram(s, state, tt)
+        n = cap.poll_telegram(s, state, svc)
     finally:
-        if tt:
-            tt.close()
+        if svc:
+            svc.close()
     rprint(f"[green]capture[/green] -> {n} message(s) handled")
 
 
@@ -327,14 +317,14 @@ def daily(
         rprint("[red]No TickTick token — run `d2d auth`.[/red]")
         raise typer.Exit(1)
     state = State(s.state_db)
-    tt = _valid_ticktick(s, state)
-    if tt is None:
-        rprint("[red]No TickTick token — run `d2d auth`.[/red]")
+    svc = _svc(s, state)
+    if svc is None:
+        rprint("[red]No todo provider configured — run `d2d auth` (TickTick).[/red]")
         raise typer.Exit(1)
     try:
-        title, md = daily_mod.build_brief(tt, state=state)
+        title, md = daily_mod.build_brief(svc, state=state)
     finally:
-        tt.close()
+        svc.close()
     if target in ("vault", "both"):
         from pathlib import Path
         d = Path(s.vault_notes_dir) / "daily"

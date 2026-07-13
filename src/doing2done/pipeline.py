@@ -11,8 +11,9 @@ from .config import Settings
 from .notes import export as _export
 from .notes import store as _store
 from .notes.media import NoteMedia, media_by_note, note_pk_from_jxa_id
+from .providers.base import TaskDraft
 from .state import State, item_key
-from .ticktick.client import TickTickClient
+from .todo import TodoService
 from .vault import archive_note, note_stem, write_note
 
 MAX_CHARS = 12000  # cap note text sent to the LLM (token + cost guard)
@@ -103,7 +104,7 @@ class IngestReport:
 def run_ingest(
     settings: Settings,
     state: State,
-    tt: TickTickClient | None,
+    svc: TodoService | None,
     *,
     apply: bool,
     limit: int | None = None,
@@ -115,45 +116,10 @@ def run_ingest(
     media_map = media_by_note()
 
     # Build routing table from the user's existing TickTick lists.
-    name2id: dict[str, str] = {}
-    norm2id: dict[str, str] = {}
     project_names: list[str] | None = None
-    if tt is not None:
-        for p in tt.projects():
-            name2id[p["name"]] = p["id"]
-            norm2id[_norm(p["name"])] = p["id"]
-        project_names = list(name2id)
-
-    def resolve_pid(proj: str | None) -> str | None:
-        default = settings.ticktick_default_project_id or None
-        if not proj:
-            return default
-        if proj in name2id:
-            return name2id[proj]
-        n = _norm(proj)
-        if n in norm2id:
-            return norm2id[n]
-        for k, v in norm2id.items():
-            if n and (n in k or k in n):
-                return v
-        return default
-
-    # Resolve a task's project (fallback: scan project data) so we can complete it.
-    pid_cache: dict[str, str] = {}
-    pid_built = {"done": False}
-
-    def resolve_task_pid(task_id: str, stored_pid: str | None) -> str | None:
-        if stored_pid:
-            return stored_pid
-        if not pid_built["done"] and tt is not None:
-            pid_built["done"] = True
-            for pid in set(name2id.values()):
-                try:
-                    for tsk in tt.project_data(pid).get("tasks") or []:
-                        pid_cache[tsk["id"]] = pid
-                except Exception:
-                    pass
-        return pid_cache.get(task_id)
+    if svc is not None:
+        svc.load_projects()
+        project_names = svc.project_names
 
     live_ids: set[str] = set()
     for note in read_notes():
@@ -210,28 +176,30 @@ def run_ingest(
                 report.notes_written += 1
 
             for todo in result.todos:
-                if apply and tt is not None:
-                    tt.upsert_task(
+                if apply and svc is not None:
+                    svc.upsert(
                         note.id,
-                        todo.title,
-                        due_date=todo.due_date,
-                        priority=todo.priority,
-                        project_id=resolve_pid(todo.project),
-                        items=todo.items,
+                        TaskDraft(
+                            title=todo.title,
+                            due_date=todo.due_date,
+                            priority=todo.priority,
+                            project_id=svc.resolve_pid(todo.project),
+                            items=todo.items,
+                        ),
                     )
                 report.todos_upserted += 1
 
             # reconcile: todos removed from the note -> complete their tasks
-            if apply and tt is not None:
+            if apply and svc is not None:
                 new_keys = {item_key(note.id, td.title) for td in result.todos}
                 for row in state.tasks_for_note(note.id):
                     if row["key"] in new_keys:
                         continue
-                    pid = resolve_task_pid(row["task_id"], row["project_id"])
+                    pid = svc.resolve_task_pid(row["task_id"], row["project_id"])
                     if not pid:
                         continue  # can't complete remotely -> retry next run
                     try:
-                        tt.complete(pid, row["task_id"])
+                        svc.complete(pid, row["task_id"])
                         state.mark_task_completed(row["key"])
                         report.completed += 1
                     except Exception:
@@ -245,18 +213,18 @@ def run_ingest(
             print(f"  ! error on '{note.name[:40]}': {type(e).__name__}: {str(e)[:120]}")
 
     # reconcile: notes deleted in Apple Notes -> complete tasks + archive vault note
-    if apply and tt is not None and limit is None:
+    if apply and svc is not None and limit is None:
         for row in state.all_seen_notes():
             if row["note_id"] in live_ids:
                 continue
             all_done = True
             for trow in state.tasks_for_note(row["note_id"]):
-                pid = resolve_task_pid(trow["task_id"], trow["project_id"])
+                pid = svc.resolve_task_pid(trow["task_id"], trow["project_id"])
                 if not pid:
                     all_done = False
                     continue
                 try:
-                    tt.complete(pid, trow["task_id"])
+                    svc.complete(pid, trow["task_id"])
                     state.mark_task_completed(trow["key"])
                     report.completed += 1
                 except Exception:
