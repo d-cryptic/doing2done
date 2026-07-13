@@ -11,17 +11,20 @@ from .models import NoteResult
 SYSTEM = """You convert a raw note (OCR'd handwriting) into structured JSON.
 Return ONLY JSON matching this schema:
 {
-  "title": string,
+  "title": string,                // ALWAYS generate a concise, descriptive title (never "Untitled")
   "date": string|null,            // ISO date if the note implies one
-  "tags": string[],
+  "tags": string[],               // 2-5 lowercase topical tags
+  "summary": string,              // one-line TL;DR of what this note is about
+  "links": string[],              // any URLs mentioned
   "todos": [                      // extract every actionable item
     {"title": string, "due_date": string|null, "priority": "none|low|medium|high",
      "project": string|null}
   ],
   "markdown": string,             // the note body as clean markdown (exclude pure todo lists)
-  "is_todo_only": boolean         // true if the note is ONLY action items, no prose worth archiving
+  "is_todo_only": boolean         // true if ONLY action items, no prose worth archiving
 }
-Infer due_date from phrases like "by Friday". Keep markdown faithful but tidy."""
+Infer due_date from phrases like "by Friday". Generate a meaningful title even for
+messy notes. Keep markdown faithful but tidy."""
 
 
 def _gemini(text: str, api_key: str, model: str) -> str:
@@ -85,8 +88,14 @@ def classify_note(
         )
     parts.append(text)
     dated = "\n\n".join(parts)
-    if provider == "gemini":
-        raw = _gemini(dated, api_key, model)
-    else:
-        raw = _openai(dated, api_key, model, base_url)
-    return NoteResult.model_validate(json.loads(raw))
+    last_err: Exception | None = None
+    for _ in range(2):  # LLMs occasionally emit malformed JSON; retry once
+        if provider == "gemini":
+            raw = _gemini(dated, api_key, model)
+        else:
+            raw = _openai(dated, api_key, model, base_url)
+        try:
+            return NoteResult.model_validate(json.loads(raw))
+        except (json.JSONDecodeError, ValueError) as e:
+            last_err = e
+    raise last_err if last_err else RuntimeError("classification failed")

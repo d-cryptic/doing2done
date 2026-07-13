@@ -31,7 +31,20 @@ uv run d2d cf-check        # verify the Cloudflare token can manage Pages
 uv run d2d ingest          # DRY-RUN: show what would sync (no writes)
 uv run d2d ingest --apply  # actually upsert todos + write vault markdown
 uv run d2d gate-site --domain doing2done-vault.pages.dev   # Access: only your email
+uv run d2d daily                                          # daily brief + rollover -> Apple Notes + vault
+uv run d2d tags                                           # regenerate the vault tag index
+uv run d2d weekly                                         # LLM weekly review digest
 ```
+
+## Features
+
+- **Ingest** — reads Apple Notes directly from NoteStore (FDA-only), classifies via LLM.
+- **Enrichment** — every note gets a title, tags, a TL;DR, and extracted links.
+- **Diagrams** — full-resolution handwriting capture + vision caption (text vs diagram, meaning/goal).
+- **TickTick** — todos smart-routed into your lists; reconciliation completes removed/deleted items.
+- **Daily note + rollover** — `d2d daily` builds a templated brief (focus + rolled-over overdue) into Apple Notes and the vault.
+- **Vault** — VitePress site with search, tag index, and daily notes, gated by Cloudflare Access.
+- **Scheduler** — launchd runs ingest + daily + deploy every 30 min (FDA-only, no Automation for reads).
 
 ## Layout
 

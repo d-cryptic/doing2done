@@ -4,6 +4,7 @@ from __future__ import annotations
 import typer
 from rich import print as rprint
 
+from . import daily as daily_mod
 from .cloudflare.deploy import Cloudflare
 from .config import get_settings
 from .pipeline import run_ingest
@@ -76,6 +77,9 @@ def deploy_site() -> None:
     import subprocess
 
     s = get_settings()
+    from .reports import generate_tag_index
+
+    generate_tag_index(s.vault_notes_dir)
     subprocess.run(["npm", "run", "docs:build"], cwd=s.vault_dir, check=True)
     env = {
         **os.environ,
@@ -122,6 +126,60 @@ def ingest(
         f"[bold]{mode}[/bold] — processed={rep.processed} "
         f"todos={rep.todos_upserted} notes={rep.notes_written} skipped={rep.skipped}"
     )
+
+
+@app.command()
+def tags() -> None:
+    """Regenerate the vault tag index page."""
+    from .reports import generate_tag_index
+
+    p = generate_tag_index(get_settings().vault_notes_dir)
+    rprint(f"[green]tag index[/green] -> {p}")
+
+
+@app.command()
+def weekly() -> None:
+    """Generate a weekly review digest into the vault."""
+    from .reports import weekly_digest
+
+    p = weekly_digest(get_settings())
+    rprint(f"[green]weekly[/green] -> {p or 'no recent notes'}")
+
+
+@app.command()
+def daily(
+    target: str = typer.Option("both", help="Where to write: notes | vault | both."),
+    folder: str = typer.Option("Daily", help="Apple Notes folder for the daily note."),
+) -> None:
+    """Build a daily brief (rolled-over overdue + today's tasks) and write it out."""
+    s = get_settings()
+    tok = oauth.load_token(s.ticktick_token_path)
+    if not tok:
+        rprint("[red]No TickTick token — run `d2d auth`.[/red]")
+        raise typer.Exit(1)
+    tt = TickTickClient(tok["access_token"], State(s.state_db))
+    try:
+        title, md = daily_mod.build_brief(tt)
+    finally:
+        tt.close()
+    if target in ("vault", "both"):
+        from pathlib import Path
+        d = Path(s.vault_notes_dir) / "daily"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{title.split(' — ')[-1]}.md").write_text(
+            f"---\ntitle: {title!r}\n---\n\n" + md + "\n"
+        )
+        rprint("[green]vault[/green] daily written")
+    if target in ("notes", "both"):
+        try:
+            res = daily_mod.write_to_apple_notes(title, md, folder)
+            rprint(f"[green]apple notes[/green] {res}")
+        except Exception as e:
+            rprint(
+                f"[yellow]apple notes skipped[/yellow] ({str(e)[:60]}) "
+                "— needs Automation permission"
+            )
+    rprint(f"[bold]{title}[/bold]")
 
 
 if __name__ == "__main__":
