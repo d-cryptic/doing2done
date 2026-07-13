@@ -37,6 +37,8 @@ class Settings(BaseSettings):
 
     # ── Local paths ──
     notes_source: str = "store"  # store (FDA-only, no Automation) | jxa
+    worker_url: str = ""
+    ingest_token: str = ""
     state_db: str = "data/state.db"
     exports_dir: str = "exports"
     vault_dir: str = "../doing2done-vault"
