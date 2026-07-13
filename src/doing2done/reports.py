@@ -143,7 +143,7 @@ def _bar(n: int, scale: int = 1) -> str:
     return "█" * max(1, round(n / scale)) if n else ""
 
 
-def generate_analytics(settings: Settings, state, tt) -> str:
+def generate_analytics(settings: Settings, state, svc) -> str:
     """Completion trend + open-task breakdown -> docs/analytics.md."""
     out = ["# Analytics\n"]
     comp = state.completions_by_day(14)
@@ -153,18 +153,12 @@ def generate_analytics(settings: Settings, state, tt) -> str:
         out.append(f"- `{d}`  {_bar(n, max(1, mx // 20))}  {n}")
     if not comp:
         out.append("*no completions tracked yet*")
-    if tt is not None:
+    if svc is not None:
         out.append("\n## Open tasks by list\n")
-        rows = []
-        for p in tt.projects():
-            try:
-                n = len([x for x in (tt.project_data(p["id"]).get("tasks") or [])
-                         if x.get("status", 0) == 0])
-            except Exception:
-                n = 0
-            if n:
-                rows.append((p["name"], n))
-        rows.sort(key=lambda x: -x[1])
+        counts: dict[str, int] = {}
+        for _task, pname in svc.open_with_project():
+            counts[pname] = counts.get(pname, 0) + 1
+        rows = sorted(counts.items(), key=lambda x: -x[1])
         mx2 = max((n for _, n in rows), default=1)
         for name, n in rows:
             out.append(f"- {name}  {_bar(n, max(1, mx2 // 20))}  {n}")

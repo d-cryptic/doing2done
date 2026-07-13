@@ -8,8 +8,9 @@ import httpx
 
 from .classify.classifier import classify_note
 from .config import Settings
+from .providers.base import TaskDraft
 from .state import State
-from .ticktick.client import TickTickClient
+from .todo import TodoService
 from .vault import write_note
 
 
@@ -17,7 +18,7 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
-def poll_telegram(settings: Settings, state: State, tt: TickTickClient | None) -> int:
+def poll_telegram(settings: Settings, state: State, svc: TodoService | None) -> int:
     """Process new Telegram messages into todos + notes. Returns count handled."""
     tok = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not tok:
@@ -30,16 +31,10 @@ def poll_telegram(settings: Settings, state: State, tt: TickTickClient | None) -
     )
     updates = r.json().get("result", [])
 
-    name2id: dict[str, str] = {}
-    if tt is not None:
-        for p in tt.projects():
-            name2id[_norm(p["name"])] = p["id"]
-    projects = None if tt is None else [p["name"] for p in tt.projects()]
-
-    def pid(proj: str | None) -> str | None:
-        if not proj:
-            return settings.ticktick_default_project_id or None
-        return name2id.get(_norm(proj), settings.ticktick_default_project_id or None)
+    projects = None
+    if svc is not None:
+        svc.load_projects()
+        projects = svc.project_names
 
     handled = 0
     for u in updates:
@@ -56,11 +51,14 @@ def poll_telegram(settings: Settings, state: State, tt: TickTickClient | None) -
             base_url=settings.llm_base_url,
             projects=projects,
         )
-        if tt is not None:
+        if svc is not None:
             for todo in result.todos:
-                tt.upsert_task(
-                    note_id, todo.title, due_date=todo.due_date, priority=todo.priority,
-                    project_id=pid(todo.project), items=todo.items,
+                svc.upsert(
+                    note_id,
+                    TaskDraft(
+                        title=todo.title, due_date=todo.due_date, priority=todo.priority,
+                        project_id=svc.resolve_pid(todo.project), items=todo.items,
+                    ),
                 )
         if not result.is_todo_only and result.markdown.strip():
             write_note(result, settings.vault_notes_dir, note_id=note_id)

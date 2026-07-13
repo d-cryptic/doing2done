@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     ticktick_redirect_uri: str = "http://localhost:8080/callback"
     ticktick_token_path: str = ".ticktick_token.json"
     ticktick_default_project_id: str = ""  # empty -> Inbox
+    todo_provider: str = "ticktick"  # ticktick | reminders | markdown
+    todo_file: str = ""  # markdown provider path (default <vault>/todos.md)
 
     # ── Cloudflare (from .env, provisioned by you) ──
     cf_admin_api_token: str = ""
