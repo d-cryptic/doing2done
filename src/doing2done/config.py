@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     cf_account_id: str = ""  # your Cloudflare account id
     cf_pages_project: str = "doing2done-vault"
     r2_bucket: str = "doing2done-assets"
+    backup_key: str = ""  # if set, state backups are AES-encrypted at rest
     cf_access_allowed_email: str = ""  # email allowed through Cloudflare Access
 
     # ── LLM classifier (cheap model) ──

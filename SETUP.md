@@ -57,3 +57,22 @@ bash scripts/install-scheduler.sh   # launchd, every 30 min
 ```
 
 See the [README](README.md) for the full command reference.
+
+## Encryption at rest
+
+Two surfaces hold your content outside the Mac; both are encrypted:
+
+| Surface | Protection |
+|---|---|
+| **Vault repo (GitHub)** | `git-crypt` — notes/assets are ciphertext in the remote. The working tree stays plaintext, so the VitePress build and its search are unaffected. |
+| **State backups (R2)** | AES-256 (`BACKUP_KEY`) — `state.db` holds every task title. |
+| **Deployed site** | Cloudflare Access (single identity). Plaintext by necessity — it has to render. |
+
+### Keys — read this
+- **git-crypt key**: exported to `~/.doing2done/vault-git-crypt.key`. **Put it in 1Password.**
+  A fresh clone needs `git-crypt unlock <key>`. Losing it makes the *repo* unreadable —
+  but the vault is regenerable from Apple Notes, so it is not catastrophic.
+- **`BACKUP_KEY`** (in your env): **Put it in 1Password.** Losing it makes R2 backups
+  unrecoverable — that one *is* the disaster-recovery copy of your dedup map.
+
+Both may be stored as 1Password refs (`op://...`), which this project resolves at runtime.

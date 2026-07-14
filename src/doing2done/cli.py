@@ -293,7 +293,7 @@ def backup() -> None:
 
 @app.command()
 def restore(
-    key: str = typer.Option("state/latest.db", help="R2 key to restore from."),
+    key: str = typer.Option("", help="R2 key (default: latest, encrypted if configured)."),
 ) -> None:
     """Restore the state DB from an R2 snapshot (overwrites local state)."""
     from .backup import restore as do_restore
