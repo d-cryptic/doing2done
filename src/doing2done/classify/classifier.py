@@ -24,10 +24,16 @@ Return ONLY JSON matching this schema:
                                   // headings, bullet/numbered lists, bold, code blocks
   "is_todo_only": boolean         // true if ONLY action items, no prose worth archiving
 }
-Infer due_date from phrases like "by Friday". If a TIME is given ("@5pm", "at 9am",
-"by 5 PM"), include it in due_date as ISO with that time (e.g. ...T17:00:00+0000);
-otherwise use no time. Nest indented sub-steps of a task into its "items" array.
-Generate a meaningful title even for messy notes. Keep markdown faithful but tidy."""
+RULES:
+- ALREADY DONE items are NOT todos. Handwritten notes mark completion with a check
+  (✓, ✔, x, [x], or struck-through text). Skip those entirely. Only unchecked items
+  (□, [ ], -, •, or plain lines) become todos.
+- NEVER invent todos. If the text has no actionable items, return "todos": [].
+  Extract only what is actually written — do not embellish or add plausible tasks.
+- Infer due_date from phrases like "by Friday". If a TIME is given ("@5pm", "at 9am"),
+  include it in due_date as ISO with that time (e.g. ...T17:00:00+0000).
+- Nest indented sub-steps of a task into its "items" array.
+- Generate a meaningful title even for messy notes. Keep markdown faithful but tidy."""
 
 
 def _gemini(text: str, api_key: str, model: str) -> str:

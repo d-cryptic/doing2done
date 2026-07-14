@@ -22,6 +22,20 @@ CASES = [
         "forbid_todos": ["hackathon", "sarah", "presentation deck", "dummy db", "demo script"],
     },
     {
+        # Handwriting marks completion with checks — ticked items must NOT become todos.
+        "name": "checked-items-are-not-todos",
+        "text": (
+            "Todos\n"
+            "✓ Wash clothes\n"
+            "✓ Go to gym\n"
+            "✓ GST call and confirm Aadhar KYC\n"
+            "□ CKAD prep\n"
+            "□ Book the exam slot\n"
+        ),
+        "expect_todos": ["ckad", "exam"],
+        "forbid_todos": ["wash clothes", "gym", "gst"],
+    },
+    {
         "name": "time-parsing",
         "text": "Call the dentist tomorrow at 5pm",
         "expect_todos": ["dentist"],

@@ -20,9 +20,16 @@ MAX_CHARS = 12000  # cap note text sent to the LLM (token + cost guard)
 
 
 def _strip_html(html: str) -> str:
-    text = re.sub(r"<[^>]+>", " ", html or "").replace("&nbsp;", " ")
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:MAX_CHARS]
+    """HTML/plain note body -> clean text the LLM can reason over."""
+    import html as _html
+
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    text = _html.unescape(text)          # &amp; &lt; &nbsp; ...
+    text = text.replace("\ufffc", " ")   # attachment placeholders (images/drawings)
+    text = re.sub(r"[\u200b-\u200d\ufeff]", "", text)  # zero-width noise
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)  # keep paragraph structure, drop runs
+    return text.strip()[:MAX_CHARS]
 
 
 def _norm(s: str) -> str:
