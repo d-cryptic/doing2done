@@ -206,6 +206,10 @@ def ingest(
     finally:
         if svc:
             svc.close()
+    if apply:
+        from .health import mark_sync
+
+        mark_sync(state)
     mode = "APPLIED" if apply else "DRY-RUN"
     rprint(
         f"[bold]{mode}[/bold] — processed={rep.processed} "
@@ -233,6 +237,22 @@ def enrich_links_cmd(limit: int = typer.Option(0, help="Max notes to enrich (0=a
     s = get_settings()
     n = enrich_links(s.vault_notes_dir, s, limit=limit or None)
     rprint(f"[green]enriched[/green] -> {n} notes")
+
+
+@app.command()
+def health() -> None:
+    """Canary: verify Notes access, provider, worker, and sync recency. Alerts on failure."""
+    from .health import check
+    from .notify import notify
+
+    s = get_settings()
+    problems = check(s, State(s.state_db))
+    if problems:
+        msg = "health check FAILED: " + "; ".join(problems)
+        notify(msg)
+        rprint(f"[red]{msg}[/red]")
+        raise typer.Exit(1)
+    rprint("[green]healthy[/green] — notes readable, provider ok, worker ok, sync recent")
 
 
 @app.command("eval")
