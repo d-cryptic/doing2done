@@ -48,7 +48,17 @@ uv run d2d dedup                                          # near-duplicate notes
 uv run d2d enrich-links                                   # fetch + summarize URLs in notes
 uv run d2d insights                                       # LLM themes/patterns report
 uv run d2d analytics / timeline / graph                   # dashboards + views
+uv run d2d eval                                           # extraction quality harness
 ```
+
+## Eval harness
+
+`d2d eval` runs the classifier over golden cases in `evals/cases.py` and fails on
+regressions — missing todos, **hallucinated** todos, bad time parsing, missing subtasks.
+It caught the class of bug where handwritten notes invented todos from the title.
+Add a case whenever you fix an extraction bug. (Needs an LLM key, so it runs locally,
+not in CI — add `LLM_API_KEY` as a repo secret to enable it there.)
+
 
 ## Features
 

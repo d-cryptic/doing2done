@@ -235,6 +235,29 @@ def enrich_links_cmd(limit: int = typer.Option(0, help="Max notes to enrich (0=a
     rprint(f"[green]enriched[/green] -> {n} notes")
 
 
+@app.command("eval")
+def eval_cmd() -> None:
+    """Run the extraction eval harness over golden cases (guards quality regressions)."""
+    from .eval import run_evals
+
+    results = run_evals(get_settings())
+    passed = sum(1 for r in results if r.ok)
+    for r in results:
+        mark = "[green]PASS[/green]" if r.ok else "[red]FAIL[/red]"
+        rprint(f"{mark}  {r.name}")
+        if not r.ok:
+            if r.missing:
+                rprint(f"       missing: {', '.join(r.missing)}")
+            if r.leaked:
+                rprint(f"       [red]hallucinated[/red]: {', '.join(r.leaked)}")
+            for n in r.notes:
+                rprint(f"       {n}")
+            rprint(f"       got: {r.got}")
+    rprint(f"\n[bold]{passed}/{len(results)} passed[/bold]")
+    if passed != len(results):
+        raise typer.Exit(1)
+
+
 @app.command()
 def insights() -> None:
     """Generate an LLM insight report over all notes."""
