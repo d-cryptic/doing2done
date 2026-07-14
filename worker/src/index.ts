@@ -1,5 +1,9 @@
 export interface Env {
   DB: D1Database;
+  LLM_API_KEY?: string;
+  LLM_BASE_URL?: string;
+  LLM_MODEL?: string;
+  TICKTICK_TOKEN?: string;
   AI: Ai;
   VECTORIZE: VectorizeIndex;
   ASSETS: R2Bucket;
@@ -118,6 +122,106 @@ async function mcpHandle(msg: any, env: Env): Promise<any> {
   return { jsonrpc: "2.0", id, error: { code: -32601, message: `unknown method: ${method}` } };
 }
 
+
+// ── Edge classification + routing: captures become todos INSTANTLY (no 30-min wait) ──
+const SYSTEM = `You convert a quick captured thought into structured JSON.
+Return ONLY JSON: {"title": string, "todos": [{"title": string, "due_date": string|null,
+"priority": "none|low|medium|high", "project": string|null}]}
+RULES:
+- Ticked/done items (✓, ✔, [x], struck-through) are NOT todos.
+- NEVER invent todos. If there is nothing actionable, return "todos": [].
+- If a TIME is given ("@5pm"), put it in due_date as ISO with that time.`;
+
+async function classify(env: Env, text: string, projects: string[]): Promise<any> {
+  if (!env.LLM_API_KEY) return { todos: [] };
+  const base = (env.LLM_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const today = new Date().toISOString().slice(0, 10);
+  let user = `Today is ${today}. Resolve relative dates against it.`;
+  if (projects.length) {
+    user += `\nAvailable lists — set todo.project to the EXACT best match or null: ${projects.join(", ")}`;
+  }
+  user += `\n\n${text}`;
+  const r = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.LLM_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: env.LLM_MODEL || "google/gemini-2.5-flash",
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: SYSTEM }, { role: "user", content: user }],
+    }),
+  });
+  if (!r.ok) return { todos: [] };
+  const j: any = await r.json();
+  try {
+    return JSON.parse(j.choices[0].message.content);
+  } catch (_) {
+    return { todos: [] };
+  }
+}
+
+const TT = "https://api.ticktick.com/open/v1";
+const PRIO: Record<string, number> = { none: 0, low: 1, medium: 3, high: 5 };
+
+async function ttProjects(env: Env): Promise<{ id: string; name: string }[]> {
+  if (!env.TICKTICK_TOKEN) return [];
+  const r = await fetch(`${TT}/project`, {
+    headers: { authorization: `Bearer ${env.TICKTICK_TOKEN}` },
+  });
+  return r.ok ? ((await r.json()) as any[]).map((p) => ({ id: p.id, name: p.name })) : [];
+}
+
+const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+async function sha1(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Classify a capture and create the todos in TickTick, deduped via D1. */
+async function routeCapture(env: Env, captureId: string, text: string): Promise<string[]> {
+  const projects = await ttProjects(env);
+  const result = await classify(env, text, projects.map((p) => p.name));
+  const byNorm = new Map(projects.map((p) => [norm(p.name), p.id]));
+  const created: string[] = [];
+  const noteId = `capture:${captureId}`;
+
+  for (const todo of result.todos ?? []) {
+    const key = await sha1(`${noteId}:${todo.title}`);
+    const seen = await env.DB.prepare("SELECT task_id FROM task_map WHERE key = ?")
+      .bind(key).first();
+    if (seen) continue; // already routed
+
+    const body: any = { title: todo.title, priority: PRIO[todo.priority] ?? 0 };
+    const pid = todo.project ? byNorm.get(norm(todo.project)) : undefined;
+    if (pid) body.projectId = pid;
+    if (todo.due_date) {
+      body.dueDate = todo.due_date;
+      const time = todo.due_date.includes("T") ? todo.due_date.split("T")[1].slice(0, 8) : "";
+      if (time && time !== "00:00:00") {
+        body.isAllDay = false;
+        body.reminders = ["TRIGGER:PT0S"];
+      } else body.isAllDay = true;
+    }
+    const r = await fetch(`${TT}/task`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.TICKTICK_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) continue;
+    const task: any = await r.json();
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO task_map(key,note_id,task_id,project_id,title,completed) " +
+      "VALUES (?,?,?,?,?,0)"
+    ).bind(key, noteId, task.id, task.projectId ?? null, todo.title).run();
+    created.push(todo.title);
+  }
+  if (created.length) {
+    await env.DB.prepare("UPDATE captures SET processed=1, reply=? WHERE id=?")
+      .bind(created.join("; "), captureId).run();
+  }
+  return created;
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -164,7 +268,8 @@ export default {
       if (!bearerOk(req, env)) return json({ error: "unauthorized" }, 401);
       const b = (await req.json()) as { source?: string; text: string };
       const id = await storeCapture(env, b.source ?? "shortcut", b.text ?? "");
-      return json({ id });
+      const todos = await routeCapture(env, id, b.text ?? "");   // instant, no Mac round-trip
+      return json({ id, todos });
     }
     // Mac pulls pending captures, classifies, then acks.
     if (p === "/captures/pending") {
@@ -219,7 +324,9 @@ export default {
         const titles = hits.map((h: any) => h.title).filter(Boolean).slice(0, 5);
         reply = titles.length ? "Related: " + titles.join("; ") : "No matches.";
       } else {
-        await storeCapture(env, "whatsapp", body);
+        const id = await storeCapture(env, "whatsapp", body);
+        const todos = await routeCapture(env, id, body);
+        reply = todos.length ? `added ✅ ${todos.join("; ")}` : "captured ✅";
       }
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${reply}</Message></Response>`,
