@@ -52,6 +52,7 @@ uv run d2d eval                                           # extraction quality h
 uv run d2d eval --compare "modelA,modelB"                 # A/B models on your own cases
 uv run d2d health                                         # canary: silent-failure detection
 uv run d2d draft "topic" --kind tweet|blog                # draft from your own notes
+uv run d2d librarian [--apply]                            # garden weak titles/tags/TL;DR
 ```
 
 ## Eval harness

@@ -404,6 +404,26 @@ def graph() -> None:
 
 
 @app.command()
+def librarian(
+    apply: bool = typer.Option(False, help="Repair metadata (default: dry-run report)."),
+    limit: int = typer.Option(0, help="Max notes to touch (0 = all)."),
+) -> None:
+    """Garden the vault: re-derive weak titles/tags/TL;DR from each note's own body."""
+    from .librarian import garden
+
+    rows = garden(get_settings(), apply=apply, limit=limit or None)
+    if not rows:
+        rprint("[green]vault is tidy[/green] — no weak metadata found")
+        return
+    for r in rows:
+        mark = "[green]fixed[/green]" if r.get("fixed") else "[yellow]weak[/yellow]"
+        err = f" ({r['error']})" if r.get("error") else ""
+        rprint(f"  {mark}  {r['file']}  missing: {', '.join(r['weak'])}{err}")
+    action = "repaired" if apply else "found (dry-run — pass --apply to fix)"
+    rprint(f"\n[bold]{len(rows)} note(s) {action}[/bold]")
+
+
+@app.command()
 def dedup() -> None:
     """Regenerate the near-duplicate notes report."""
     from .reports import generate_duplicates_page
