@@ -59,11 +59,20 @@ Baileys WhatsApp bridge — **your own number, no Meta verification**. It uses
 doing2done as **MCP tools**. Needs an always-on host (e.g. Hetzner) + Node 18.
 
 1. Install Hermes Agent on your host and pair WhatsApp: `hermes whatsapp` (scan the QR).
-2. Install doing2done on that host with its `.env`, then add it as an MCP server:
+2. Point Hermes at doing2done's tools — **either**:
+
+   **a) Remote (no install)** — the Worker hosts MCP over HTTP:
+   ```
+   hermes mcp add doing2done --url https://<worker-subdomain>.workers.dev/mcp
+   ```
+   (bearer-gated with `INGEST_TOKEN`; exposes `ask_notes` + `capture` — the edge-native tools)
+
+   **b) Local (all four tools)** — needs doing2done + `.env` on that host:
    ```
    uv sync --extra mcp
    hermes mcp add doing2done --command "uv run d2d-mcp"
    ```
+   (adds `add_todo` + `daily_brief`, which need your todo-provider credentials)
 3. Restrict access: `WHATSAPP_ALLOWED_USERS=<your number>` in `~/.hermes/.env`.
 4. Run as a service: `hermes gateway install`.
 
