@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS task_map (
     completed  INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS rollovers (
+    task_id    TEXT PRIMARY KEY,
+    count      INTEGER NOT NULL DEFAULT 0,
+    last_seen  TEXT NOT NULL DEFAULT (date('now'))
+);
 CREATE TABLE IF NOT EXISTS pushed (
     note_id    TEXT PRIMARY KEY,
     hash       TEXT NOT NULL,
@@ -138,6 +143,28 @@ class State:
                 (f"-{days} day",),
             ).fetchall()
             return [(r["d"], r["n"]) for r in rows]
+
+    def bump_rollover(self, task_id: str, today: str) -> int:
+        """Count a task as rolled over once per day. Returns the new count."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT count, last_seen FROM rollovers WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if row and row["last_seen"] == today:
+                return int(row["count"])  # already counted today
+            new = (int(row["count"]) if row else 0) + 1
+            c.execute(
+                "INSERT OR REPLACE INTO rollovers(task_id, count, last_seen) VALUES (?, ?, ?)",
+                (task_id, new, today),
+            )
+            return new
+
+    def rollover_count(self, task_id: str) -> int:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT count FROM rollovers WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            return int(row["count"]) if row else 0
 
     def get_pushed_hash(self, note_id: str) -> str | None:
         with self._conn() as c:
