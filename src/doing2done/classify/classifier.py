@@ -5,6 +5,7 @@ import datetime as _dt
 import json
 
 from ..retry import retrying_post
+from ..usage import record
 from .models import NoteResult
 
 SYSTEM = """You convert a raw note (OCR'd handwriting) into structured JSON.
@@ -63,7 +64,9 @@ def _openai(text: str, api_key: str, model: str, base_url: str = "") -> str:
         },
         timeout=60,
     )
-    return r.json()["choices"][0]["message"]["content"]
+    j = r.json()
+    record(model, j.get("usage"), "text")
+    return j["choices"][0]["message"]["content"]
 
 
 def classify_note(

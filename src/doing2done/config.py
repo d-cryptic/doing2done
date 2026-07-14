@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     cf_access_client_secret: str = ""
     cf_account_id: str = ""  # your Cloudflare account id
     cf_pages_project: str = "doing2done-vault"
+    r2_bucket: str = "doing2done-assets"
     cf_access_allowed_email: str = ""  # email allowed through Cloudflare Access
 
     # ── LLM classifier (cheap model) ──

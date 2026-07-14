@@ -240,6 +240,45 @@ def enrich_links_cmd(limit: int = typer.Option(0, help="Max notes to enrich (0=a
 
 
 @app.command()
+def cost(days: int = typer.Option(30, help="Window in days.")) -> None:
+    """What this actually costs: tokens + estimated spend by model."""
+    from .usage import summarize
+
+    s = summarize(days)
+    if not s["calls"]:
+        rprint("[yellow]no usage recorded yet[/yellow] (accounting starts from now)")
+        return
+    rprint(f"[bold]last {s['days']}d — {s['calls']} LLM calls[/bold]\n")
+    for model, a in sorted(s["models"].items(), key=lambda x: -x[1]["cost"]):
+        rprint(
+            f"  {model:38} {a['calls']:4} calls  "
+            f"{a['in']:>8,} in / {a['out']:>7,} out   ${a['cost']:.4f}"
+        )
+    monthly = s["total_cost"] * 30 / max(s["days"], 1)
+    rprint(f"\n[bold]estimated total: ${s['total_cost']:.4f}[/bold]  (~${monthly:.2f}/mo)")
+
+
+@app.command()
+def backup() -> None:
+    """Snapshot the state DB to R2 (dedup map — losing it duplicates every todo)."""
+    from .backup import backup as do_backup
+
+    keys = do_backup(get_settings())
+    rprint(f"[green]backed up[/green] -> {', '.join(keys)}")
+
+
+@app.command()
+def restore(
+    key: str = typer.Option("state/latest.db", help="R2 key to restore from."),
+) -> None:
+    """Restore the state DB from an R2 snapshot (overwrites local state)."""
+    from .backup import restore as do_restore
+
+    path = do_restore(get_settings(), key)
+    rprint(f"[green]restored[/green] {key} -> {path}")
+
+
+@app.command()
 def health() -> None:
     """Canary: verify Notes access, provider, worker, and sync recency. Alerts on failure."""
     from .health import check

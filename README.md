@@ -53,6 +53,8 @@ uv run d2d eval --compare "modelA,modelB"                 # A/B models on your o
 uv run d2d health                                         # canary: silent-failure detection
 uv run d2d draft "topic" --kind tweet|blog                # draft from your own notes
 uv run d2d librarian [--apply]                            # garden weak titles/tags/TL;DR
+uv run d2d backup / restore                               # state DB -> R2 (dedup map!)
+uv run d2d cost [--days N]                                # what it actually costs
 ```
 
 ## Eval harness
