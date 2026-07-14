@@ -268,27 +268,46 @@ def insights() -> None:
 
 
 @app.command()
-def push() -> None:
-    """Push Apple Notes payloads to the Cloudflare edge (D1)."""
+def push(
+    force: bool = typer.Option(False, help="Re-push every note (rebuild embeddings)."),
+) -> None:
+    """Push changed Apple Notes to the Cloudflare edge (D1 + Vectorize)."""
+    from hashlib import sha1
+
     from .notes import store
 
     s = get_settings()
     if not s.worker_url or not s.ingest_token:
         rprint("[red]Set WORKER_URL + INGEST_TOKEN in .env.[/red]")
         raise typer.Exit(1)
-    payload = [
-        {"note_id": n.id, "title": n.name, "body": n.body_html[:8000], "modified": n.modified}
-        for n in store.list_notes()
-    ]
-    total = 0
-    for i in range(0, len(payload), 20):  # batch for Workers AI subrequest limits
+    state = State(s.state_db)
+
+    pending: list[tuple[dict, str]] = []
+    for n in store.list_notes():
+        body = n.body_html[:8000]
+        digest = sha1(f"{n.name}|{n.modified}|{body}".encode()).hexdigest()
+        if not force and state.get_pushed_hash(n.id) == digest:
+            continue  # unchanged since last push — skip re-embedding
+        pending.append(
+            ({"note_id": n.id, "title": n.name, "body": body, "modified": n.modified}, digest)
+        )
+
+    if not pending:
+        rprint("[green]push[/green] -> up to date (0 changed)")
+        return
+
+    embedded = 0
+    for i in range(0, len(pending), 20):  # batch for Workers AI subrequest limits
+        chunk = pending[i : i + 20]
         r = httpx.post(
-            f"{s.worker_url}/ingest", json=payload[i : i + 20],
+            f"{s.worker_url}/ingest", json=[p for p, _ in chunk],
             headers={"Authorization": f"Bearer {s.ingest_token}"}, timeout=120,
         )
         r.raise_for_status()
-        total += r.json().get("embedded", 0)
-    rprint(f"[green]pushed[/green] -> {len(payload)} notes, {total} embedded")
+        embedded += r.json().get("embedded", 0)
+        for payload, digest in chunk:  # only record after a successful push
+            state.set_pushed_hash(payload["note_id"], digest)
+    rprint(f"[green]pushed[/green] -> {len(pending)} changed, {embedded} embedded")
 
 
 @app.command()
