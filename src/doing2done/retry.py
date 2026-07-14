@@ -11,7 +11,7 @@ T = TypeVar("T")
 _TRANSIENT = (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError, httpx.PoolTimeout)
 
 
-def with_retry(fn: Callable[[], T], attempts: int = 4, base: float = 0.6) -> T:
+def with_retry(fn: Callable[[], T], attempts: int = 6, base: float = 0.8) -> T:
     last: Exception | None = None
     for i in range(attempts):
         try:
@@ -19,9 +19,14 @@ def with_retry(fn: Callable[[], T], attempts: int = 4, base: float = 0.6) -> T:
         except _TRANSIENT as e:
             last = e
         except httpx.HTTPStatusError as e:
-            if e.response.status_code < 500:
-                raise
+            code = e.response.status_code
+            if code != 429 and code < 500:
+                raise  # real client error
             last = e
+            ra = e.response.headers.get("retry-after")
+            if ra and ra.isdigit() and i < attempts - 1:
+                time.sleep(min(int(ra), 15))
+                continue
         if i < attempts - 1:
             time.sleep(base * (2**i))
     raise last if last else RuntimeError("retry failed")

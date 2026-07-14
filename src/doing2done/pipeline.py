@@ -29,10 +29,8 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
-def _persist_diagrams(
-    stem: str, items: list[NoteMedia], notes_dir: str, settings: Settings
-) -> tuple[str, int]:
-    """Vision-caption each render, dedup by content, persist distinct pages only."""
+def _describe_diagrams(items: list[NoteMedia], settings: Settings) -> list[dict]:
+    """Vision-describe each distinct diagram page once (transcription + caption)."""
     import hashlib
     from difflib import SequenceMatcher
 
@@ -42,16 +40,10 @@ def _persist_diagrams(
         blob = f"{d.get('transcription', '')} {d.get('caption', '')}".lower()
         return re.sub(r"\s+", " ", blob).strip()
 
-    drawings = [m for m in items if m.png_paths]
-    if not drawings:
-        return "", 0
-    asset_dir = Path(notes_dir) / "assets" / stem
-    asset_dir.mkdir(parents=True, exist_ok=True)
-    out = ["\n\n## Diagrams\n"]
+    out: list[dict] = []
     kept: list[str] = []
     seen_img: set[str] = set()
-    count = 0
-    for m in drawings:
+    for m in [x for x in items if x.png_paths]:
         for src in m.png_paths:
             try:
                 img_hash = hashlib.md5(Path(src).read_bytes()).hexdigest()
@@ -61,32 +53,43 @@ def _persist_diagrams(
                 continue
             try:
                 desc = describe_page(
-                    src,
-                    api_key=settings.llm_api_key,
-                    model=settings.llm_model,
+                    src, api_key=settings.llm_api_key, model=settings.llm_model,
                     base_url=settings.llm_base_url,
                 )
             except Exception:
                 desc = {}
             norm = _norm(desc)
-            # skip near-duplicate renders of the same page
             if norm and any(SequenceMatcher(None, norm, k).ratio() >= 0.85 for k in kept):
                 continue
             seen_img.add(img_hash)
             kept.append(norm)
-            count += 1
-            dest = asset_dir / f"diagram-{count}.png"
-            shutil.copyfile(src, dest)
-            kind = desc.get("kind", "")
-            caption = desc.get("caption", "")
-            transcription = desc.get("transcription", "")
-            label = f"diagram {count}" + (f" \u00b7 {kind}" if kind else "")
-            out.append(f"\n![{label}](./assets/{stem}/diagram-{count}.png)\n")
-            if caption:
-                out.append(f"\n*{caption}*\n")
-            if transcription:
-                out.append(f"\n> **Transcription:** {transcription}\n")
-    return "".join(out), count
+            out.append({
+                "src": src, "kind": desc.get("kind", ""),
+                "caption": desc.get("caption", ""), "transcription": desc.get("transcription", ""),
+            })
+    return out
+
+
+def _persist_diagrams(stem: str, descs: list[dict], notes_dir: str) -> tuple[str, int]:
+    """Copy + embed already-described diagram pages into the vault."""
+    if not descs:
+        return "", 0
+    asset_dir = Path(notes_dir) / "assets" / stem
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    out = ["\n\n## Diagrams\n"]
+    for i, d in enumerate(descs, 1):
+        dest = asset_dir / f"diagram-{i}.png"
+        shutil.copyfile(d["src"], dest)
+        kind = d.get("kind", "")
+        caption = d.get("caption", "")
+        transcription = d.get("transcription", "")
+        label = f"diagram {i}" + (f" \u00b7 {kind}" if kind else "")
+        out.append(f"\n![{label}](./assets/{stem}/diagram-{i}.png)\n")
+        if caption:
+            out.append(f"\n*{caption}*\n")
+        if transcription:
+            out.append(f"\n> **Transcription:** {transcription}\n")
+    return "".join(out), len(descs)
 
 
 @dataclass
@@ -143,8 +146,15 @@ def run_ingest(
             continue
 
         try:
+            # Transcribe handwriting/diagrams FIRST, then classify on the real content
+            # (a handwritten note has ~no typed text — its content lives in the drawing).
+            descs = _describe_diagrams(drawings, settings) if has_media else []
+            diagram_text = "\n".join(
+                d["transcription"] for d in descs if d.get("transcription")
+            ).strip()
+            combined = (text + ("\n\n" + diagram_text if diagram_text else "")).strip()
             result = classify_note(
-                text or note.name,
+                combined or note.name,
                 provider=settings.llm_provider,
                 api_key=settings.llm_api_key,
                 model=settings.llm_model,
@@ -157,7 +167,7 @@ def run_ingest(
                 if apply:
                     stem = note_stem(result, note.id)
                     diagram_md, ndraw = _persist_diagrams(
-                        stem, drawings, settings.vault_notes_dir, settings
+                        stem, descs, settings.vault_notes_dir
                     )
                     old_md = state.get_md_path(note.id)
                     md_path = write_note(
@@ -172,7 +182,7 @@ def run_ingest(
                             shutil.rmtree(old_assets)
                     report.diagrams += ndraw
                 else:
-                    report.diagrams += sum(len(m.png_paths) for m in drawings)
+                    report.diagrams += len(descs)
                 report.notes_written += 1
 
             for todo in result.todos:
