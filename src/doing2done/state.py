@@ -17,6 +17,12 @@ CREATE TABLE IF NOT EXISTS task_map (
     completed  INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS cal_events (
+    task_id    TEXT PRIMARY KEY,
+    event_uid  TEXT NOT NULL,
+    signature  TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS rollovers (
     task_id    TEXT PRIMARY KEY,
     count      INTEGER NOT NULL DEFAULT 0,
@@ -143,6 +149,21 @@ class State:
                 (f"-{days} day",),
             ).fetchall()
             return [(r["d"], r["n"]) for r in rows]
+
+    def get_cal_event(self, task_id: str) -> tuple[str, str] | None:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT event_uid, signature FROM cal_events WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            return (row["event_uid"], row["signature"]) if row else None
+
+    def set_cal_event(self, task_id: str, uid: str, signature: str) -> None:
+        with self._conn() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO cal_events(task_id, event_uid, signature, updated_at) "
+                "VALUES (?, ?, ?, datetime('now'))",
+                (task_id, uid, signature),
+            )
 
     def bump_rollover(self, task_id: str, today: str) -> int:
         """Count a task as rolled over once per day. Returns the new count."""
