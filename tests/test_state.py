@@ -41,3 +41,13 @@ def test_pushed_hash_tracking(tmp_path):
     assert db.get_pushed_hash("n1") == "abc123"      # unchanged -> skip
     db.set_pushed_hash("n1", "def456")               # content changed -> new hash
     assert db.get_pushed_hash("n1") == "def456"
+
+
+def test_rollover_counts_once_per_day(tmp_path):
+    """A task rolled over is counted once per day, and accumulates across days."""
+    db = State(str(tmp_path / "s.db"))
+    assert db.rollover_count("t1") == 0
+    assert db.bump_rollover("t1", "2026-07-14") == 1
+    assert db.bump_rollover("t1", "2026-07-14") == 1   # same day -> no double count
+    assert db.bump_rollover("t1", "2026-07-15") == 2   # next day -> accrues
+    assert db.rollover_count("t1") == 2

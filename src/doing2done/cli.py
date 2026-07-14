@@ -411,7 +411,7 @@ def daily(
         rprint("[red]No todo provider configured — run `d2d auth` (TickTick).[/red]")
         raise typer.Exit(1)
     try:
-        title, md = daily_mod.build_brief(svc, state=state)
+        title, md = daily_mod.build_brief(svc, state=state, settings=s)
     finally:
         svc.close()
     if target in ("vault", "both"):

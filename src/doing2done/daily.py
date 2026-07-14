@@ -28,11 +28,17 @@ def _parse_due(s: str | None) -> dt.date | None:
 
 
 def build_brief(
-    svc: TodoService, today: dt.date | None = None, state: State | None = None
+    svc: TodoService,
+    today: dt.date | None = None,
+    state: State | None = None,
+    settings=None,
 ) -> tuple[str, str]:
     """Return (title, markdown) for today's brief with rolled-over tasks."""
     today = today or _today()
     pairs = svc.open_with_project()  # [(Task, project_name)]
+
+    def rollovers(task) -> int:
+        return state.rollover_count(task.id) if state is not None else 0
 
     def line(task, pname: str) -> str:
         due = _parse_due(task.due_date)
@@ -41,7 +47,9 @@ def build_brief(
             tag = f" ·  overdue {(today - due).days}d"
         elif due == today:
             tag = " ·  due today"
-        return f"- [ ] {task.title.strip()}  ({pname}{tag})"
+        n = rollovers(task)
+        chronic = f"  ⚠️ rolled over {n}×" if n >= 3 else ""
+        return f"- [ ] {task.title.strip()}  ({pname}{tag}){chronic}"
 
     def score(task) -> float:
         due = _parse_due(task.due_date)
@@ -56,6 +64,9 @@ def build_brief(
                 (True, False): "Q3 quick", (False, False): "Q4 later"}[(urgent, important)]
 
     overdue = [(t, n) for t, n in pairs if (_parse_due(t.due_date) or today) < today]
+    if state is not None:
+        for t_, _n in overdue:
+            state.bump_rollover(t_.id, today.isoformat())
     due_today = [(t, n) for t, n in pairs if _parse_due(t.due_date) == today]
     high = [(t, n) for t, n in pairs if t.priority >= 5]
 
@@ -78,6 +89,15 @@ def build_brief(
         "## 🎯 Focus (top 3)\n"
         + ("\n".join(f"{line(t, n)}  `{q}`" for t, n, q in focus) or "- [ ] ")
     )
+    if settings is not None:
+        plan_lines = [
+            f"- {t.title} | {n} | overdue {(today - (_parse_due(t.due_date) or today)).days}d "
+            f"| priority {t.priority} | rolled over {rollovers(t)}x"
+            for t, n in (overdue + due_today)[:25]
+        ]
+        plan = _plan(plan_lines, settings)
+        if plan:
+            md.append("\n## 🧭 Plan\n" + plan)
     md.append(
         "\n## 📋 Rolled over\n"
         + ("\n".join(line(t, n) for t, n in rolled) or "*nothing overdue 🎉*")
@@ -86,6 +106,31 @@ def build_brief(
     done = [r["title"] for r in state.recently_completed(1)] if state is not None else []
     md.append("## ✅ Done\n" + ("\n".join(f"- [x] {d}" for d in done) if done else "*nothing yet*"))
     return title, "\n".join(md)
+
+
+def _plan(lines: list[str], settings) -> str:
+    """LLM planning pass: a realistic 'today' given the open work. Best-effort."""
+    if not lines or not settings.llm_api_key:
+        return ""
+    from .classify.classifier import _gemini, _openai
+
+    prompt = (
+        "You are a pragmatic planning assistant. Given today's open tasks (with overdue "
+        "days, priority, and how many times each has been rolled over), write 2-4 short "
+        "sentences: what to realistically do today, what to explicitly drop/defer, and "
+        "call out anything rolled over many times that should be broken down or killed. "
+        'Be direct, no preamble. Return JSON {"markdown": string}.\n\n' + "\n".join(lines)
+    )
+    import json
+
+    try:
+        if settings.llm_provider == "gemini":
+            raw = _gemini(prompt, settings.llm_api_key, settings.llm_model)
+        else:
+            raw = _openai(prompt, settings.llm_api_key, settings.llm_model, settings.llm_base_url)
+        return json.loads(raw).get("markdown", "")
+    except Exception:
+        return ""
 
 
 def _md_to_html(md: str) -> str:
