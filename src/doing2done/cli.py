@@ -112,9 +112,10 @@ def telegram_setup(
         raise typer.Exit(1)
     # register the webhook
     hook = f"{s.worker_url}/telegram/{s.ingest_token}"
-    r = httpx.get(f"https://api.telegram.org/bot{token}/setWebhook", params={"url": hook}, timeout=20)
+    api = f"https://api.telegram.org/bot{token}/setWebhook"
+    r = httpx.get(api, params={"url": hook}, timeout=20)
     ok = r.json().get("ok")
-    rprint(f"[green]telegram ready[/green]" if ok else f"[red]webhook failed:[/red] {r.text[:120]}")
+    rprint("[green]telegram ready[/green]" if ok else f"[red]webhook failed:[/red] {r.text[:120]}")
     if ok:
         rprint("  Message your bot: a thought -> todos, or 'ask <question>' -> search.")
 
