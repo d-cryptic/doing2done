@@ -169,11 +169,9 @@ def deploy_site() -> None:
     generate_timeline(s.vault_notes_dir)
     generate_graph(s.vault_notes_dir)
     subprocess.run(["npm", "run", "docs:build"], cwd=s.vault_dir, check=True)
-    env = {
-        **os.environ,
-        "CLOUDFLARE_API_TOKEN": s.cf_admin_api_token,
-        "CLOUDFLARE_ACCOUNT_ID": s.cf_account_id,
-    }
+    env = {**os.environ, "CLOUDFLARE_API_TOKEN": s.cf_admin_api_token}
+    if s.cf_account_id:
+        env["CLOUDFLARE_ACCOUNT_ID"] = s.cf_account_id
     subprocess.run(
         [
             "wrangler", "pages", "deploy", "docs/.vitepress/dist",
