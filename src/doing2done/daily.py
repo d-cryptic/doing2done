@@ -90,12 +90,19 @@ def build_brief(
         + ("\n".join(f"{line(t, n)}  `{q}`" for t, n, q in focus) or "- [ ] ")
     )
     if settings is not None:
-        plan_lines = [
-            f"- {t.title} | {n} | overdue {(today - (_parse_due(t.due_date) or today)).days}d "
-            f"| priority {t.priority} | rolled over {rollovers(t)}x"
-            for t, n in (overdue + due_today)[:25]
-        ]
-        plan = _plan(plan_lines, settings)
+        # Generate the plan once per day and cache it: the LLM's wording varies per call,
+        # which would otherwise churn the daily note (spurious deploys + 48 LLM calls/day).
+        cache_key = f"plan:{today.isoformat()}"
+        plan = state.get_kv(cache_key) if state is not None else None
+        if plan is None:
+            plan_lines = [
+                f"- {t.title} | {n} | overdue {(today - (_parse_due(t.due_date) or today)).days}d "
+                f"| priority {t.priority} | rolled over {rollovers(t)}x"
+                for t, n in (overdue + due_today)[:25]
+            ]
+            plan = _plan(plan_lines, settings)
+            if state is not None and plan:
+                state.set_kv(cache_key, plan)
         if plan:
             md.append("\n## 🧭 Plan\n" + plan)
     md.append(
