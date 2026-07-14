@@ -23,6 +23,7 @@ uv run d2d ingest --apply || notify "scheduled ingest failed"
 uv run d2d daily --target both || notify "daily brief failed"
 uv run d2d analytics || true
 uv run d2d librarian --apply || true   # garden weak metadata (no-op when tidy)
+uv run d2d backup || notify "state backup failed"   # dedup map is irreplaceable
 uv run d2d push || notify "edge push failed"
 
 # 2) publish only if the vault changed

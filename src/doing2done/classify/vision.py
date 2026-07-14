@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from ..retry import retrying_post
+from ..usage import record
 
 PROMPT = (
     "This is one page from a handwritten Apple Notes note. Return ONLY JSON:\n"
@@ -42,7 +43,9 @@ def describe_page(png_path: str | Path, *, api_key: str, model: str, base_url: s
             ],
         },
     )
-    data = json.loads(r.json()["choices"][0]["message"]["content"])
+    j = r.json()
+    record(model, j.get("usage"), "vision")
+    data = json.loads(j["choices"][0]["message"]["content"])
     return {
         "kind": str(data.get("kind", "")).strip(),
         "transcription": str(data.get("transcription", "")).strip(),
