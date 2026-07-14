@@ -1,7 +1,9 @@
 # Interfaces — capture & ask from anywhere
 
-Every channel flows through one edge Worker: captures land in a queue that the Mac
-pulls, classifies, and routes to your todo provider + vault. "Ask" queries hit
+Every channel flows through one edge Worker. **Captures are classified and routed to
+TickTick at the edge, instantly** (~5s, no waiting for the Mac's cycle). Captures that
+contain only prose stay queued and become vault notes on the Mac's next pass (it owns
+the vault + diagrams). "Ask" queries hit
 semantic search (Vectorize) directly.
 
 Endpoints (Worker): `POST /capture`, `GET /ask`, `POST /whatsapp/<token>`,
