@@ -65,7 +65,20 @@ def generate_tag_index(notes_dir: str) -> str:
     return str(dest)
 
 
-def weekly_digest(settings: Settings, days: int = 7) -> str:
+def _kill_list(state) -> str:
+    """A weekly mirror: what you keep deferring."""
+    if state is None:
+        return ""
+    chronic = state.chronic_tasks(4)
+    if not chronic:
+        return ""
+    lines = ["\n## 🪓 Kill list — rolled over repeatedly\n",
+             "\nBe honest: break these down or delete them.\n"]
+    lines += [f"- **{n}×** — {title}" for title, n in chronic]
+    return "\n".join(lines) + "\n"
+
+
+def weekly_digest(settings: Settings, days: int = 7, state=None) -> str:
     """Summarize the last N days of notes into a vault digest via the LLM."""
 
     nd = Path(settings.vault_notes_dir)
@@ -96,7 +109,7 @@ def weekly_digest(settings: Settings, days: int = 7) -> str:
     today = dt.date.today().isoformat()
     dest = wk / f"{today}.md"
     header = f'---\ntitle: "Weekly — {today}"\n---\n\n# Weekly review — {today}\n\n'
-    dest.write_text(header + body + "\n")
+    dest.write_text(header + body + "\n" + _kill_list(state))
     return str(dest)
 
 

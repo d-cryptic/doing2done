@@ -303,6 +303,23 @@ def eval_cmd(
 
 
 @app.command()
+def draft(
+    topic: str = typer.Argument(..., help="What to write about (grounded in your notes)."),
+    kind: str = typer.Option("blog", help="tweet | blog | note"),
+) -> None:
+    """Draft a tweet/blog from your own notes (RAG-grounded)."""
+    from .draft import make_draft
+
+    s = get_settings()
+    body, path = make_draft(topic, kind, s.vault_notes_dir, s)
+    if not path:
+        rprint("[yellow]no relevant notes found[/yellow]")
+        raise typer.Exit(1)
+    rprint(f"[green]draft[/green] -> {path}\n")
+    rprint(body[:600])
+
+
+@app.command()
 def insights() -> None:
     """Generate an LLM insight report over all notes."""
     from .reports import generate_insights
@@ -434,7 +451,8 @@ def weekly() -> None:
     """Generate a weekly review digest into the vault."""
     from .reports import weekly_digest
 
-    p = weekly_digest(get_settings())
+    s = get_settings()
+    p = weekly_digest(s, state=State(s.state_db))
     rprint(f"[green]weekly[/green] -> {p or 'no recent notes'}")
 
 

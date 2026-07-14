@@ -82,5 +82,20 @@ Now WhatsApp yourself:
 Sources: [Hermes WhatsApp](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/whatsapp) ·
 [Hermes MCP](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp)
 
+
+## 6. Voice capture (free — no transcription pipeline)
+
+Siri already dictates, so voice capture is just a Shortcut:
+
+1. Duplicate **"Capture to doing2done"**, name it **"Note to self"**.
+2. Make the first action `Dictate Text`.
+3. Use its output as `text` in the request body:
+   `{ "source": "voice", "text": [Dictated Text] }`
+4. Say **"Hey Siri, Note to self"** → speak → it lands in the capture queue and
+   syncs into todos/notes on the next cycle.
+
+Works on iPhone, Watch, AirPods, and CarPlay. (This is why a separate voice-memo
+transcription pipeline was dropped — dictation covers the capture case for free.)
+
 ## Scheduler
 `d2d capture` (in the launchd loop) pulls + processes queued captures every cycle.
