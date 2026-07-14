@@ -17,10 +17,10 @@ class CaseResult:
     got: list[str] = field(default_factory=list)
 
 
-def run_case(case: dict, settings: Settings) -> CaseResult:
+def run_case(case: dict, settings: Settings, model: str | None = None) -> CaseResult:
     r = classify_note(
         case["text"], provider=settings.llm_provider, api_key=settings.llm_api_key,
-        model=settings.llm_model, base_url=settings.llm_base_url,
+        model=model or settings.llm_model, base_url=settings.llm_base_url,
     )
     titles = [t.title for t in r.todos]
     blob = " | ".join(titles).lower()
@@ -56,5 +56,5 @@ def _load_cases() -> list[dict]:
     return list(mod.CASES)
 
 
-def run_evals(settings: Settings) -> list[CaseResult]:
-    return [run_case(c, settings) for c in _load_cases()]
+def run_evals(settings: Settings, model: str | None = None) -> list[CaseResult]:
+    return [run_case(c, settings, model=model) for c in _load_cases()]

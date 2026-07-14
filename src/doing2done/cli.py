@@ -256,11 +256,35 @@ def health() -> None:
 
 
 @app.command("eval")
-def eval_cmd() -> None:
+def eval_cmd(
+    model: str = typer.Option("", help="Override the model for this run."),
+    compare: str = typer.Option("", help="Comma-separated models to A/B on your cases."),
+) -> None:
     """Run the extraction eval harness over golden cases (guards quality regressions)."""
     from .eval import run_evals
 
-    results = run_evals(get_settings())
+    s = get_settings()
+    if compare:
+        rprint("[bold]model comparison on your golden cases[/bold]\n")
+        table: list[tuple[str, int, int, list[str]]] = []
+        for m in [x.strip() for x in compare.split(",") if x.strip()]:
+            try:
+                res = run_evals(s, model=m)
+            except Exception as e:
+                rprint(f"[red]{m}: error[/red] {str(e)[:70]}")
+                continue
+            ok = sum(1 for r in res if r.ok)
+            fails = [r.name for r in res if not r.ok]
+            table.append((m, ok, len(res), fails))
+            mark = "[green]" if ok == len(res) else "[yellow]"
+            detail = f"  failed: {', '.join(fails)}" if fails else ""
+            rprint(f"{mark}{ok}/{len(res)}[/] {m}{detail}")
+        if table:
+            best = max(table, key=lambda r: r[1])
+            rprint(f"\n[bold]best on your data:[/bold] {best[0]} ({best[1]}/{best[2]})")
+        return
+
+    results = run_evals(s, model=model or None)
     passed = sum(1 for r in results if r.ok)
     for r in results:
         mark = "[green]PASS[/green]" if r.ok else "[red]FAIL[/red]"
