@@ -63,12 +63,83 @@ await fetch('/app/capture',{method:'POST',headers:{'content-type':'application/j
 document.getElementById('capout').textContent='captured';document.getElementById('cap').value='';}
 </script></body></html>`;
 
+
+// ── Remote MCP (JSON-RPC over HTTP) — any agent can use doing2done with no install ──
+const MCP_TOOLS = [
+  {
+    name: "ask_notes",
+    description: "Semantic search over the user's private note vault. Returns the most relevant notes.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "What to look for" } },
+      required: ["query"],
+    },
+  },
+  {
+    name: "capture",
+    description: "Capture a quick thought; it becomes todos + a note on the next sync.",
+    inputSchema: {
+      type: "object",
+      properties: { text: { type: "string", description: "The thought to capture" } },
+      required: ["text"],
+    },
+  },
+];
+
+async function mcpHandle(msg: any, env: Env): Promise<any> {
+  const { id, method, params } = msg ?? {};
+  const ok = (result: unknown) => ({ jsonrpc: "2.0", id, result });
+  if (method === "initialize") {
+    return ok({
+      protocolVersion: "2024-11-05",
+      capabilities: { tools: {} },
+      serverInfo: { name: "doing2done", version: "1.0.0" },
+    });
+  }
+  if (method === "notifications/initialized") return null; // notification: no reply
+  if (method === "tools/list") return ok({ tools: MCP_TOOLS });
+  if (method === "tools/call") {
+    const name = params?.name;
+    const args = params?.arguments ?? {};
+    let text = "";
+    if (name === "ask_notes") {
+      const hits = await semanticAsk(env, String(args.query ?? ""));
+      text = hits.length
+        ? "Relevant notes:\n" + hits.map((h: any) => `- ${h.title} (${h.score})`).join("\n")
+        : "No matching notes.";
+    } else if (name === "capture") {
+      await storeCapture(env, "mcp", String(args.text ?? ""));
+      text = "Captured — it will sync into todos/notes.";
+    } else {
+      return { jsonrpc: "2.0", id, error: { code: -32601, message: `unknown tool: ${name}` } };
+    }
+    return ok({ content: [{ type: "text", text }] });
+  }
+  return { jsonrpc: "2.0", id, error: { code: -32601, message: `unknown method: ${method}` } };
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const p = url.pathname;
 
     if (p === "/health") return json({ ok: true, service: "doing2done" });
+
+    // Remote MCP endpoint (bearer-gated, same token)
+    if (p === "/mcp" && req.method === "POST") {
+      if (!bearerOk(req, env)) return json({ error: "unauthorized" }, 401);
+      const body = await req.json();
+      if (Array.isArray(body)) {
+        const out = [];
+        for (const m of body) {
+          const r = await mcpHandle(m, env);
+          if (r) out.push(r);
+        }
+        return json(out);
+      }
+      const r = await mcpHandle(body, env);
+      return r ? json(r) : new Response(null, { status: 202 });
+    }
 
     // ── Mac thin-agent: bulk note push (existing) ──
     if (p === "/ingest" && req.method === "POST") {
