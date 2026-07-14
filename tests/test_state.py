@@ -31,3 +31,13 @@ def test_note_watermark(tmp_path):
 def test_item_key_stable():
     assert item_key("n1", "x") == item_key("n1", "x")
     assert item_key("n1", "x") != item_key("n2", "x")
+
+
+def test_pushed_hash_tracking(tmp_path):
+    """Incremental push: unchanged notes are skipped, changed ones re-push."""
+    db = State(str(tmp_path / "s.db"))
+    assert db.get_pushed_hash("n1") is None          # never pushed -> must push
+    db.set_pushed_hash("n1", "abc123")
+    assert db.get_pushed_hash("n1") == "abc123"      # unchanged -> skip
+    db.set_pushed_hash("n1", "def456")               # content changed -> new hash
+    assert db.get_pushed_hash("n1") == "def456"

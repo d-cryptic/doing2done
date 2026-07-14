@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS task_map (
     completed  INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS pushed (
+    note_id    TEXT PRIMARY KEY,
+    hash       TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -133,6 +138,21 @@ class State:
                 (f"-{days} day",),
             ).fetchall()
             return [(r["d"], r["n"]) for r in rows]
+
+    def get_pushed_hash(self, note_id: str) -> str | None:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT hash FROM pushed WHERE note_id = ?", (note_id,)
+            ).fetchone()
+            return row["hash"] if row else None
+
+    def set_pushed_hash(self, note_id: str, digest: str) -> None:
+        with self._conn() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO pushed(note_id, hash, updated_at) "
+                "VALUES (?, ?, datetime('now'))",
+                (note_id, digest),
+            )
 
     def get_kv(self, key: str) -> str | None:
         with self._conn() as c:
