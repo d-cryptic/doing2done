@@ -46,181 +46,146 @@ async function storeCapture(env: Env, source: string, text: string): Promise<str
   return id;
 }
 
-const APP_PAGE = `<!doctype html><html><head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><title>ask my notes</title>
-<style>body{background:#000;color:#eee;font:16px -apple-system,system-ui;margin:0;padding:18px;max-width:720px;margin:auto}
-h1{font-size:18px}input,button{font:inherit}#q{width:100%;padding:12px;background:#111;border:1px solid #333;color:#eee;border-radius:8px}
-button{margin-top:8px;padding:10px 16px;background:#2a2;border:0;border-radius:8px;color:#000;font-weight:600}
-.a{white-space:pre-wrap;margin-top:16px;padding:14px;background:#0c0c0d;border:1px solid #262628;border-radius:8px}
-.s{color:#7ec699;font-size:12px;margin-top:8px}.c{margin-top:24px;border-top:1px solid #222;padding-top:16px}</style></head>
-<body><h1>ask my notes</h1>
-<input id=q placeholder="what did I decide about..." autofocus>
-<button onclick="ask()">Ask</button><div id=out></div>
-<div class=c><input id=cap placeholder="quick capture a thought..."><button onclick="cap()">Capture</button><div id=capout class=s></div></div>
+const APP_PAGE = `<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0a09">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ask my notes</title>
+<style>
+:root{
+  --ink:#0b0a09; --ink2:#131110; --line:#26231e;
+  --vellum:#ece5d6; --muted:#8d857a; --faint:#5b554c;
+  --amber:#d99a3c; --sage:#8fae86; --rose:#c07a6b;
+  --serif:ui-serif,"New York","Iowan Old Style",Palatino,Georgia,serif;
+  --round:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;min-width:0}
+textarea,.send,.seg,.hit{max-width:100%}
+html,body{margin:0;background:var(--ink);color:var(--vellum);overflow-x:hidden;width:100%}
+/* paper grain — inline SVG turbulence, no network */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+/* lamplight pooling at the top */
+body::after{content:"";position:fixed;inset:0 0 auto;height:340px;pointer-events:none;z-index:0;
+  background:radial-gradient(120% 100% at 50% -20%,rgba(217,154,60,.13),transparent 70%)}
+.wrap{position:relative;z-index:1;width:100%;max-width:min(640px,100%);box-sizing:border-box;margin:0 auto;
+  padding:max(28px,env(safe-area-inset-top)) 22px calc(28px + env(safe-area-inset-bottom))}
+header{margin:6px 0 26px;animation:rise .5s both}
+.kick{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--amber)}
+h1{font-family:var(--serif);font-weight:500;font-size:clamp(32px,10vw,40px);line-height:1.02;letter-spacing:-.02em;margin:10px 0 6px}
+h1 em{font-style:italic;color:var(--amber)}
+.sub{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin:0}
+/* composer */
+.composer{animation:rise .5s .06s both}
+.seg{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;margin-bottom:12px}
+.seg button{font-family:var(--round);font-size:13px;font-weight:600;letter-spacing:.01em;
+  padding:7px 16px;border:0;border-radius:999px;background:transparent;color:var(--muted);cursor:pointer;transition:.18s}
+.seg button[aria-selected="true"]{background:var(--vellum);color:var(--ink)}
+.field{position:relative;width:100%}
+textarea{display:block;width:100%;max-width:100%;min-height:104px;resize:none;font-family:var(--round);font-size:17px;line-height:1.45;
+  color:var(--vellum);background:var(--ink2);border:1px solid var(--line);border-radius:14px;padding:15px;
+  outline:none;transition:border-color .2s,box-shadow .2s}
+textarea::placeholder{color:var(--faint)}
+textarea:focus{border-color:#3d382f;box-shadow:0 0 0 4px rgba(217,154,60,.07)}
+.send{display:block;width:100%;margin-top:10px;font-family:var(--round);font-weight:700;font-size:15.5px;letter-spacing:.01em;
+  padding:14px;border:0;border-radius:13px;background:var(--amber);color:#1a1206;cursor:pointer;
+  transition:transform .12s,opacity .2s,filter .2s}
+.send:active{transform:scale(.985)}
+.send:hover{filter:brightness(1.05)}
+.send[disabled]{opacity:.5}
+.hint{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin:9px 2px 0}
+/* results */
+#out{margin-top:26px}
+.thinking{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:9px}
+.nib{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1.05s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+.lede{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);
+  padding-bottom:10px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.hit{display:flex;align-items:baseline;gap:12px;padding:14px 2px;border-bottom:1px solid var(--line);
+  animation:rise .4s both}
+.hit .t{font-family:var(--serif);font-size:17px;line-height:1.3;flex:1}
+.hit .s{font-family:var(--mono);font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.bar{height:2px;background:var(--amber);border-radius:2px;opacity:.55;margin-top:5px}
+.done{font-family:var(--round);font-size:16px;color:var(--sage);display:flex;gap:9px;align-items:flex-start;
+  padding:15px;border:1px solid rgba(143,174,134,.28);border-radius:12px;background:rgba(143,174,134,.05);
+  animation:rise .4s both}
+.done ul{margin:6px 0 0;padding-left:16px;color:var(--vellum);font-size:14px}
+.empty{font-family:var(--serif);font-style:italic;color:var(--faint);font-size:16px;padding:8px 2px}
+.err{font-family:var(--mono);font-size:12px;color:var(--rose)}
+@keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body>
+<div class="wrap">
+  <header>
+    <div class="kick">doing2done</div>
+    <h1>ask your <em>notes</em></h1>
+    <p class="sub">everything you ever scribbled — one question away</p>
+  </header>
+
+  <div class="composer">
+    <div class="seg" role="tablist">
+      <button id="mAsk" role="tab" aria-selected="true" onclick="mode('ask')">Ask</button>
+      <button id="mCap" role="tab" aria-selected="false" onclick="mode('capture')">Capture</button>
+    </div>
+    <div class="field">
+      <textarea id="q" placeholder="what did I decide about…" autofocus></textarea>
+    </div>
+    <button class="send" id="go" onclick="send()">Ask my notes</button>
+    <p class="hint" id="hint">⌘/ctrl + enter to send · searches meaning, not keywords</p>
+  </div>
+
+  <div id="out"></div>
+</div>
 <script>
-async function ask(){const q=document.getElementById('q').value;if(!q)return;
-document.getElementById('out').innerHTML='<div class=a>...</div>';
-const r=await fetch('/app/ask?q='+encodeURIComponent(q));const d=await r.json();
-document.getElementById('out').innerHTML='<div class=a>'+(d.answer||'')+'</div><div class=s>'+(d.sources||[]).join(' . ')+'</div>';}
-async function cap(){const t=document.getElementById('cap').value;if(!t)return;
-await fetch('/app/capture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:t})});
-document.getElementById('capout').textContent='captured';document.getElementById('cap').value='';}
+let M='ask';
+const $=(i)=>document.getElementById(i);
+function mode(m){
+  M=m;
+  $('mAsk').setAttribute('aria-selected',m==='ask');
+  $('mCap').setAttribute('aria-selected',m==='capture');
+  $('go').textContent = m==='ask'?'Ask my notes':'Capture it';
+  $('q').placeholder = m==='ask'?'what did I decide about…':'a thought, a todo, anything…';
+  $('hint').textContent = m==='ask'
+    ? '⌘/ctrl + enter to send · searches meaning, not keywords'
+    : '⌘/ctrl + enter to send · todos land in your list within seconds';
+  $('out').innerHTML=''; $('q').focus();
+}
+$('q').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')send();});
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
+async function send(){
+  const v=$('q').value.trim(); if(!v) return;
+  $('go').disabled=true;
+  $('out').innerHTML='<div class="thinking"><span class="nib"></span>'+(M==='ask'?'reading your notes…':'filing it…')+'</div>';
+  try{
+    if(M==='ask'){
+      const r=await fetch('/app/ask?q='+encodeURIComponent(v));
+      const d=await r.json();
+      const hits=d.hits||[];
+      if(!hits.length){$('out').innerHTML='<p class="empty">Nothing in your notes touches that — yet.</p>';}
+      else{
+        $('out').innerHTML='<div class="lede">'+hits.length+' related notes</div>'+hits.map((h,i)=>
+          '<div class="hit" style="animation-delay:'+(i*45)+'ms"><div style="flex:1"><div class="t">'+esc(h.title||'untitled')+
+          '</div><div class="bar" style="width:'+Math.round((h.score||0)*100)+'%"></div></div>'+
+          '<div class="s">'+((h.score||0).toFixed(2))+'</div></div>').join('');
+      }
+    }else{
+      const r=await fetch('/app/capture',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({text:v})});
+      const d=await r.json();
+      const todos=d.todos||[];
+      $('out').innerHTML='<div class="done"><span>✎</span><div><strong>'+
+        (todos.length?'Added to your list':'Captured')+'</strong>'+
+        (todos.length?'<ul>'+todos.map(t=>'<li>'+esc(t)+'</li>').join('')+'</ul>'
+                     :'<div style="font-size:13px;color:var(--muted);margin-top:4px">It\\'ll become a note on the next sync.</div>')+
+        '</div></div>';
+      $('q').value='';
+    }
+  }catch(e){ $('out').innerHTML='<p class="err">failed — '+esc(String(e))+'</p>'; }
+  $('go').disabled=false;
+}
 </script></body></html>`;
-
-
-// ── Remote MCP (JSON-RPC over HTTP) — any agent can use doing2done with no install ──
-const MCP_TOOLS = [
-  {
-    name: "ask_notes",
-    description: "Semantic search over the user's private note vault. Returns the most relevant notes.",
-    inputSchema: {
-      type: "object",
-      properties: { query: { type: "string", description: "What to look for" } },
-      required: ["query"],
-    },
-  },
-  {
-    name: "capture",
-    description: "Capture a quick thought; it becomes todos + a note on the next sync.",
-    inputSchema: {
-      type: "object",
-      properties: { text: { type: "string", description: "The thought to capture" } },
-      required: ["text"],
-    },
-  },
-];
-
-async function mcpHandle(msg: any, env: Env): Promise<any> {
-  const { id, method, params } = msg ?? {};
-  const ok = (result: unknown) => ({ jsonrpc: "2.0", id, result });
-  if (method === "initialize") {
-    return ok({
-      protocolVersion: "2024-11-05",
-      capabilities: { tools: {} },
-      serverInfo: { name: "doing2done", version: "1.0.0" },
-    });
-  }
-  if (method === "notifications/initialized") return null; // notification: no reply
-  if (method === "tools/list") return ok({ tools: MCP_TOOLS });
-  if (method === "tools/call") {
-    const name = params?.name;
-    const args = params?.arguments ?? {};
-    let text = "";
-    if (name === "ask_notes") {
-      const hits = await semanticAsk(env, String(args.query ?? ""));
-      text = hits.length
-        ? "Relevant notes:\n" + hits.map((h: any) => `- ${h.title} (${h.score})`).join("\n")
-        : "No matching notes.";
-    } else if (name === "capture") {
-      await storeCapture(env, "mcp", String(args.text ?? ""));
-      text = "Captured — it will sync into todos/notes.";
-    } else {
-      return { jsonrpc: "2.0", id, error: { code: -32601, message: `unknown tool: ${name}` } };
-    }
-    return ok({ content: [{ type: "text", text }] });
-  }
-  return { jsonrpc: "2.0", id, error: { code: -32601, message: `unknown method: ${method}` } };
-}
-
-
-// ── Edge classification + routing: captures become todos INSTANTLY (no 30-min wait) ──
-const SYSTEM = `You convert a quick captured thought into structured JSON.
-Return ONLY JSON: {"title": string, "todos": [{"title": string, "due_date": string|null,
-"priority": "none|low|medium|high", "project": string|null}]}
-RULES:
-- Ticked/done items (✓, ✔, [x], struck-through) are NOT todos.
-- NEVER invent todos. If there is nothing actionable, return "todos": [].
-- If a TIME is given ("@5pm"), put it in due_date as ISO with that time.`;
-
-async function classify(env: Env, text: string, projects: string[]): Promise<any> {
-  if (!env.LLM_API_KEY) return { todos: [] };
-  const base = (env.LLM_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-  const today = new Date().toISOString().slice(0, 10);
-  let user = `Today is ${today}. Resolve relative dates against it.`;
-  if (projects.length) {
-    user += `\nAvailable lists — set todo.project to the EXACT best match or null: ${projects.join(", ")}`;
-  }
-  user += `\n\n${text}`;
-  const r = await fetch(`${base}/chat/completions`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.LLM_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      model: env.LLM_MODEL || "google/gemini-2.5-flash",
-      response_format: { type: "json_object" },
-      messages: [{ role: "system", content: SYSTEM }, { role: "user", content: user }],
-    }),
-  });
-  if (!r.ok) return { todos: [] };
-  const j: any = await r.json();
-  try {
-    return JSON.parse(j.choices[0].message.content);
-  } catch (_) {
-    return { todos: [] };
-  }
-}
-
-const TT = "https://api.ticktick.com/open/v1";
-const PRIO: Record<string, number> = { none: 0, low: 1, medium: 3, high: 5 };
-
-async function ttProjects(env: Env): Promise<{ id: string; name: string }[]> {
-  if (!env.TICKTICK_TOKEN) return [];
-  const r = await fetch(`${TT}/project`, {
-    headers: { authorization: `Bearer ${env.TICKTICK_TOKEN}` },
-  });
-  return r.ok ? ((await r.json()) as any[]).map((p) => ({ id: p.id, name: p.name })) : [];
-}
-
-const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-
-async function sha1(s: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/** Classify a capture and create the todos in TickTick, deduped via D1. */
-async function routeCapture(env: Env, captureId: string, text: string): Promise<string[]> {
-  const projects = await ttProjects(env);
-  const result = await classify(env, text, projects.map((p) => p.name));
-  const byNorm = new Map(projects.map((p) => [norm(p.name), p.id]));
-  const created: string[] = [];
-  const noteId = `capture:${captureId}`;
-
-  for (const todo of result.todos ?? []) {
-    const key = await sha1(`${noteId}:${todo.title}`);
-    const seen = await env.DB.prepare("SELECT task_id FROM task_map WHERE key = ?")
-      .bind(key).first();
-    if (seen) continue; // already routed
-
-    const body: any = { title: todo.title, priority: PRIO[todo.priority] ?? 0 };
-    const pid = todo.project ? byNorm.get(norm(todo.project)) : undefined;
-    if (pid) body.projectId = pid;
-    if (todo.due_date) {
-      body.dueDate = todo.due_date;
-      const time = todo.due_date.includes("T") ? todo.due_date.split("T")[1].slice(0, 8) : "";
-      if (time && time !== "00:00:00") {
-        body.isAllDay = false;
-        body.reminders = ["TRIGGER:PT0S"];
-      } else body.isAllDay = true;
-    }
-    const r = await fetch(`${TT}/task`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${env.TICKTICK_TOKEN}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) continue;
-    const task: any = await r.json();
-    await env.DB.prepare(
-      "INSERT OR REPLACE INTO task_map(key,note_id,task_id,project_id,title,completed) " +
-      "VALUES (?,?,?,?,?,0)"
-    ).bind(key, noteId, task.id, task.projectId ?? null, todo.title).run();
-    created.push(todo.title);
-  }
-  if (created.length) {
-    await env.DB.prepare("UPDATE captures SET processed=1, reply=? WHERE id=?")
-      .bind(created.join("; "), captureId).run();
-  }
-  return created;
-}
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -302,15 +267,14 @@ export default {
     if (p === "/app/ask") {
       if (!accessOk(req)) return json({ error: "forbidden" }, 403);
       const q = url.searchParams.get("q") ?? "";
-      const hits = await semanticAsk(env, q);
-      const titles = hits.map((h: any) => h.title).filter(Boolean);
-      return json({ answer: titles.length ? `Related notes: ${titles.join("; ")}` : "No matches.", sources: titles });
+      return json({ query: q, hits: await semanticAsk(env, q) });
     }
     if (p === "/app/capture" && req.method === "POST") {
       if (!accessOk(req)) return json({ error: "forbidden" }, 403);
       const b = (await req.json()) as { text: string };
-      await storeCapture(env, "web", b.text ?? "");
-      return json({ ok: true });
+      const id = await storeCapture(env, "web", b.text ?? "");
+      const todos = await routeCapture(env, id, b.text ?? "");
+      return json({ ok: true, todos });
     }
 
     // ── WhatsApp via Twilio sandbox (form-encoded webhook) ──
