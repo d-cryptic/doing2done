@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     ticktick_token_path: str = ".ticktick_token.json"
     ticktick_default_project_id: str = ""  # empty -> Inbox
     todo_provider: str = "ticktick"  # ticktick | reminders | markdown
+    calendar_name: str = "doing2done"  # Apple Calendar to mirror due dates into
     todo_file: str = ""  # markdown provider path (default <vault>/todos.md)
 
     # ── Cloudflare (from .env, provisioned by you) ──

@@ -21,6 +21,7 @@ uv run d2d ingest --apply || notify "scheduled ingest failed"
 
 # 1b) daily brief with rollover (idempotent per day: skips if the note exists)
 uv run d2d daily --target both || notify "daily brief failed"
+uv run d2d calendar --apply || true   # mirror due dates to Apple Calendar
 uv run d2d analytics || true
 uv run d2d librarian --apply || true   # garden weak metadata (no-op when tidy)
 uv run d2d backup || notify "state backup failed"   # dedup map is irreplaceable

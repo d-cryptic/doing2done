@@ -239,6 +239,30 @@ def enrich_links_cmd(limit: int = typer.Option(0, help="Max notes to enrich (0=a
     rprint(f"[green]enriched[/green] -> {n} notes")
 
 
+@app.command("calendar")
+def calendar_cmd(
+    apply: bool = typer.Option(False, help="Write events (default: dry-run)."),
+) -> None:
+    """Mirror due-dated todos onto your Apple Calendar (no Google OAuth)."""
+    from .calendar import sync as cal_sync
+
+    s = get_settings()
+    state = State(s.state_db)
+    svc = _svc(s, state)
+    if svc is None:
+        rprint("[red]No todo provider configured.[/red]")
+        raise typer.Exit(1)
+    try:
+        rep = cal_sync(s, state, svc, apply=apply)
+    finally:
+        svc.close()
+    mode = "APPLIED" if apply else "DRY-RUN"
+    rprint(
+        f"[bold]{mode}[/bold] calendar '{s.calendar_name}' — "
+        f"created={rep['created']} updated={rep['updated']} unchanged={rep['unchanged']}"
+    )
+
+
 @app.command()
 def cost(days: int = typer.Option(30, help="Window in days.")) -> None:
     """What this actually costs: tokens + estimated spend by model."""
