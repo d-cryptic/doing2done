@@ -41,17 +41,17 @@ route an address (e.g. `capture@your-domain`) to the **doing2done** Worker.
 Or run **`d2d wire-email capture@your-domain`** (needs the token to have *Zone > Email Routing Rules > Edit*).
 Then email a thought to that address; the Worker's `email()` handler queues it.
 
-## 4. WhatsApp (no Meta Business verification — Twilio Sandbox)
-1. Create a free [Twilio](https://twilio.com) account.
-2. Console → Messaging → **Try it out → WhatsApp Sandbox**. Join by sending the
-   given `join <word>` code from your WhatsApp to the sandbox number.
-3. Set the sandbox **"When a message comes in"** webhook to:
-   `https://<worker-subdomain>.workers.dev/whatsapp/<INGEST_TOKEN>` (POST).
-4. Message the sandbox number: plain text → captured; start with `ask ` → semantic answer.
+## 4. Telegram bot (your own bot, instant)
 
-> Fully-unofficial alternative (no Twilio): self-host `Baileys` (WhatsApp-Web) on a
-> box like Hetzner and POST to `/capture`. No verification, but against WhatsApp ToS
-> and can get a number banned — Twilio Sandbox is the safer path.
+1. Create a bot: message **@BotFather** on Telegram -> `/newbot` -> copy the token.
+2. Wire it in one command:
+   ```
+   uv run d2d telegram-setup <bot-token>
+   ```
+   (sets the Worker secret + registers the webhook)
+3. Message your bot:
+   - any thought -> classified + routed to TickTick **instantly** (edge)
+   - `ask what did I decide about X` -> semantic search over your notes
 
 
 ## 5. WhatsApp via Hermes Agent (own number, no verification, no Twilio)

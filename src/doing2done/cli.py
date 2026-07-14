@@ -87,6 +87,38 @@ def cf_check() -> None:
         cf.close()
 
 
+@app.command("telegram-setup")
+def telegram_setup(
+    token: str = typer.Argument(..., help="Bot token from @BotFather."),
+) -> None:
+    """Wire a Telegram bot: set the Worker secret + register the webhook."""
+    import os
+    import subprocess
+
+    import httpx
+
+    s = get_settings()
+    if not s.worker_url or not s.ingest_token:
+        rprint("[red]Set WORKER_URL + INGEST_TOKEN in .env first.[/red]")
+        raise typer.Exit(1)
+    # store the bot token as a Worker secret (via wrangler OAuth)
+    env = {k: v for k, v in os.environ.items() if k != "CLOUDFLARE_API_TOKEN"}
+    p = subprocess.run(
+        ["wrangler", "secret", "put", "TELEGRAM_BOT_TOKEN"], cwd="worker", env=env,
+        input=token + "\n", capture_output=True, text=True,
+    )
+    if "Success" not in p.stdout:
+        rprint(f"[red]secret failed:[/red] {(p.stderr or p.stdout)[-120:]}")
+        raise typer.Exit(1)
+    # register the webhook
+    hook = f"{s.worker_url}/telegram/{s.ingest_token}"
+    r = httpx.get(f"https://api.telegram.org/bot{token}/setWebhook", params={"url": hook}, timeout=20)
+    ok = r.json().get("ok")
+    rprint(f"[green]telegram ready[/green]" if ok else f"[red]webhook failed:[/red] {r.text[:120]}")
+    if ok:
+        rprint("  Message your bot: a thought -> todos, or 'ask <question>' -> search.")
+
+
 @app.command()
 def shortcuts() -> None:
     """Print ready-to-paste capture/ask config (URLs + token) for Apple Shortcuts."""

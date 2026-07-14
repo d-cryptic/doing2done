@@ -108,6 +108,8 @@ uv run d2d draft "topic" --kind tweet|blog                # draft from your own 
 uv run d2d librarian [--apply]                            # garden weak titles/tags/TL;DR
 uv run d2d backup / restore                               # state DB -> R2 (dedup map!)
 uv run d2d cost [--days N]                                # what it actually costs
+uv run d2d calendar [--apply]                            # mirror due dates -> Apple Calendar
+uv run d2d telegram-setup <token>                        # wire a Telegram bot
 ```
 
 ## Eval harness

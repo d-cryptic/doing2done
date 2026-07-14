@@ -187,8 +187,95 @@ async function send(){
 }
 </script></body></html>`;
 
+// ── Edge classification + routing (restored — definitions were lost in a merge) ──
+const SYSTEM = `You convert a quick captured thought into structured JSON.
+Return ONLY JSON: {"title": string, "todos": [{"title": string, "due_date": string|null,
+"priority": "none|low|medium|high", "project": string|null}]}
+RULES:
+- Ticked/done items (\u2713, \u2714, [x], struck-through) are NOT todos.
+- NEVER invent todos. If there is nothing actionable, return "todos": [].
+- If a TIME is given ("@5pm"), put it in due_date as ISO with that time.`;
+
+async function classify(env: Env, text: string, projects: string[]): Promise<any> {
+  if (!env.LLM_API_KEY) return { todos: [] };
+  const base = (env.LLM_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const today = new Date().toISOString().slice(0, 10);
+  let user = `Today is ${today}. Resolve relative dates against it.`;
+  if (projects.length) {
+    user += `\nAvailable lists - set todo.project to the EXACT best match or null: ${projects.join(", ")}`;
+  }
+  user += `\n\n${text}`;
+  const r = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.LLM_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: env.LLM_MODEL || "google/gemini-2.5-flash",
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: SYSTEM }, { role: "user", content: user }],
+    }),
+  });
+  if (!r.ok) return { todos: [] };
+  const j: any = await r.json();
+  try { return JSON.parse(j.choices[0].message.content); } catch (_) { return { todos: [] }; }
+}
+
+const TT = "https://api.ticktick.com/open/v1";
+const PRIO: Record<string, number> = { none: 0, low: 1, medium: 3, high: 5 };
+
+async function ttProjects(env: Env): Promise<{ id: string; name: string }[]> {
+  if (!env.TICKTICK_TOKEN) return [];
+  const r = await fetch(`${TT}/project`, { headers: { authorization: `Bearer ${env.TICKTICK_TOKEN}` } });
+  return r.ok ? ((await r.json()) as any[]).map((p) => ({ id: p.id, name: p.name })) : [];
+}
+
+const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+async function sha1(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function routeCapture(env: Env, captureId: string, text: string): Promise<string[]> {
+  const projects = await ttProjects(env);
+  const result = await classify(env, text, projects.map((p) => p.name));
+  const byNorm = new Map(projects.map((p) => [norm(p.name), p.id]));
+  const created: string[] = [];
+  const noteId = `capture:${captureId}`;
+  for (const todo of result.todos ?? []) {
+    const key = await sha1(`${noteId}:${todo.title}`);
+    const seen = await env.DB.prepare("SELECT task_id FROM task_map WHERE key = ?").bind(key).first();
+    if (seen) continue;
+    const body: any = { title: todo.title, priority: PRIO[todo.priority] ?? 0 };
+    const pid = todo.project ? byNorm.get(norm(todo.project)) : undefined;
+    if (pid) body.projectId = pid;
+    if (todo.due_date) {
+      body.dueDate = todo.due_date;
+      const time = todo.due_date.includes("T") ? todo.due_date.split("T")[1].slice(0, 8) : "";
+      if (time && time !== "00:00:00") { body.isAllDay = false; body.reminders = ["TRIGGER:PT0S"]; }
+      else body.isAllDay = true;
+    }
+    const r = await fetch(`${TT}/task`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.TICKTICK_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) continue;
+    const task: any = await r.json();
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO task_map(key,note_id,task_id,project_id,title,completed) VALUES (?,?,?,?,?,0)"
+    ).bind(key, noteId, task.id, task.projectId ?? null, todo.title).run();
+    created.push(todo.title);
+  }
+  if (created.length) {
+    await env.DB.prepare("UPDATE captures SET processed=1, reply=? WHERE id=?")
+      .bind(created.join("; "), captureId).run();
+  }
+  return created;
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+   try {
     const url = new URL(req.url);
     const p = url.pathname;
 
@@ -277,28 +364,45 @@ export default {
       return json({ ok: true, todos });
     }
 
-    // ── WhatsApp via Twilio sandbox (form-encoded webhook) ──
-    if (p.startsWith("/whatsapp/") && req.method === "POST") {
-      if (p.slice("/whatsapp/".length) !== env.INGEST_TOKEN) return json({ error: "forbidden" }, 403);
-      const form = await req.formData();
-      const body = String(form.get("Body") ?? "").trim();
-      let reply = "captured ✅";
-      if (body.toLowerCase().startsWith("ask ")) {
-        const hits = await semanticAsk(env, body.slice(4));
-        const titles = hits.map((h: any) => h.title).filter(Boolean).slice(0, 5);
-        reply = titles.length ? "Related: " + titles.join("; ") : "No matches.";
+    // ── Telegram bot (webhook) — capture + ask from your phone, on your own number ──
+    if (p.startsWith("/telegram/") && req.method === "POST") {
+      if (p.slice("/telegram/".length) !== env.INGEST_TOKEN) return json({ error: "forbidden" }, 403);
+      const upd: any = await req.json();
+      const msg = upd.message ?? upd.edited_message;
+      const text = (msg?.text ?? "").trim();
+      const chatId = msg?.chat?.id;
+      if (!text || !chatId) return json({ ok: true });
+
+      let reply: string;
+      const low = text.toLowerCase();
+      if (text === "/start" || text === "/help") {
+        reply = "doing2done ✎\nSend any thought and I'll turn it into todos + a note.\nAsk your notes: `ask what did I decide about X`";
+      } else if (low.startsWith("/ask ") || low.startsWith("ask ")) {
+        const q = text.replace(/^\/?ask\s+/i, "");
+        const hits = await semanticAsk(env, q);
+        reply = hits.length
+          ? "🔎 related notes:\n• " + hits.slice(0, 6).map((h: any) => h.title).join("\n• ")
+          : "Nothing in your notes touches that yet.";
       } else {
-        const id = await storeCapture(env, "whatsapp", body);
-        const todos = await routeCapture(env, id, body);
-        reply = todos.length ? `added ✅ ${todos.join("; ")}` : "captured ✅";
+        const id = await storeCapture(env, "telegram", text);
+        const todos = await routeCapture(env, id, text);
+        reply = todos.length ? "added ✅\n• " + todos.join("\n• ") : "captured ✎ (will become a note on the next sync)";
       }
-      return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${reply}</Message></Response>`,
-        { headers: { "content-type": "text/xml" } }
-      );
+      if (env.TELEGRAM_BOT_TOKEN) {
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: reply, parse_mode: "Markdown" }),
+        });
+      }
+      return json({ ok: true });
     }
 
     return new Response("doing2done worker", { status: 200 });
+   } catch (e: any) {
+    console.error(e?.stack || e);
+    return Response.json({ error: "internal error" }, { status: 500 });
+   }
   },
 
   // ── Email capture (Cloudflare Email Routing → this Worker) ──
