@@ -166,6 +166,18 @@ class State:
             ).fetchone()
             return int(row["count"]) if row else 0
 
+    def chronic_tasks(self, min_count: int = 4) -> list[tuple[str, int]]:
+        """Still-open tasks rolled over >= min_count times — the kill-list candidates."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT t.title, r.count FROM rollovers r "
+                "JOIN task_map t ON t.task_id = r.task_id "
+                "WHERE r.count >= ? AND t.completed = 0 "
+                "ORDER BY r.count DESC LIMIT 20",
+                (min_count,),
+            ).fetchall()
+            return [(r["title"], int(r["count"])) for r in rows]
+
     def get_pushed_hash(self, note_id: str) -> str | None:
         with self._conn() as c:
             row = c.execute(

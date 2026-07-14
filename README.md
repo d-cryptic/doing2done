@@ -49,6 +49,9 @@ uv run d2d enrich-links                                   # fetch + summarize UR
 uv run d2d insights                                       # LLM themes/patterns report
 uv run d2d analytics / timeline / graph                   # dashboards + views
 uv run d2d eval                                           # extraction quality harness
+uv run d2d eval --compare "modelA,modelB"                 # A/B models on your own cases
+uv run d2d health                                         # canary: silent-failure detection
+uv run d2d draft "topic" --kind tweet|blog                # draft from your own notes
 ```
 
 ## Eval harness
