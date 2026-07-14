@@ -15,6 +15,59 @@ iPad (Apple Pencil) --iCloud--> Mac ingest ──┬─> TickTick (todos, auto-m
                                              └─> Markdown -> doing2done-vault (VitePress, Cloudflare Access)
 ```
 
+
+## What it looks like
+
+**You scribble this on your iPad** (Apple Pencil — never typed):
+
+```
+Todos
+  wash clothes
+  book dentist @ 5pm
+  CKAD prep
+  ship the API by Friday
+    - write the docs
+    - dry-run the deploy
+  review 10 draft PRs
+```
+
+**~30 minutes later, having touched nothing:**
+
+**→ Your todo app** (TickTick / Apple Reminders / a Markdown file — your choice),
+routed into your *existing* lists, deduped, with times and subtasks:
+
+| Todo | List | Due |
+|------|------|-----|
+| Book dentist | 🏠 Personal | today **17:00** + reminder |
+| CKAD prep | 🏠 Personal | — |
+| Ship the API | 💼 Work | Friday · 2 subtasks |
+| Review 10 draft PRs | 💼 Work | — |
+
+**→ Your private vault** (searchable, gated, auto-deployed):
+
+```markdown
+---
+title: "Daily Tasks and Delivery Prep"
+date: "2026-07-14"
+tags: ["tasks", "delivery", "certification"]
+---
+
+> **TL;DR** A working checklist covering errands, CKAD prep, and shipping the API.
+
+## Diagrams
+
+![diagram 1 · text](./assets/2026-07-14-daily-tasks-a1b2c3/diagram-1.png)
+
+> **Transcription:** Todos / wash clothes / book dentist @ 5pm / CKAD prep / ...
+
+## Related
+- [Kubernetes Concepts](./2026-07-02-kubernetes-concepts-9f8e7d)
+```
+
+The handwriting is read on-device, the diagram is kept **and** transcribed, todos are
+routed, and the vault rebuilds itself — search, tags, backlinks, a daily brief, and a
+plan that tells you what to drop.
+
 ## Setup
 
 ```bash
