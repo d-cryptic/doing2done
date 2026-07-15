@@ -441,15 +441,15 @@ def push(
         raise typer.Exit(1)
     state = State(s.state_db)
 
+    from .push_payload import payload_for
+
     pending: list[tuple[dict, str]] = []
     for n in store.list_notes():
-        body = n.body_html[:8000]
-        digest = sha1(f"{n.name}|{n.modified}|{body}".encode()).hexdigest()
+        item = payload_for(n, state)
+        digest = sha1(f"{item['title']}|{n.modified}|{item['body']}".encode()).hexdigest()
         if not force and state.get_pushed_hash(n.id) == digest:
             continue  # unchanged since last push — skip re-embedding
-        pending.append(
-            ({"note_id": n.id, "title": n.name, "body": body, "modified": n.modified}, digest)
-        )
+        pending.append((item, digest))
 
     if not pending:
         rprint("[green]push[/green] -> up to date (0 changed)")
