@@ -361,3 +361,129 @@ def generate_graph(notes_dir: str) -> str:
     dest = Path(notes_dir).parent / "graph.md"
     dest.write_text(f"# Note graph\n\nHow your notes connect (strongest links).\n\n{body}\n")
     return str(dest)
+
+
+def generate_home(settings: Settings, state=None, svc=None) -> str:
+    """The vault's front page: real content, not a menu of links.
+
+    Built from the vault itself so it can never advertise something that isn't
+    there — every number and headline below is read off the notes at build time.
+    """
+    import datetime as _dt
+
+    nd = Path(settings.vault_notes_dir)
+    notes: list[dict] = []
+    tag_counts: dict[str, int] = {}
+    diagrams = 0
+    for md in nd.glob("*.md"):
+        if md.name == "index.md":
+            continue
+        raw = md.read_text()
+        fm = _frontmatter(raw)
+        d = (fm.get("date", "") or "").split("T")[0]
+        notes.append({
+            "title": fm.get("title", md.stem),
+            "stem": md.stem,
+            "date": d,
+            "summary": _summary_of(raw),
+            "tags": fm.get("tags", []) or [],
+        })
+        for tg in fm.get("tags", []) or []:
+            tag_counts[tg] = tag_counts.get(tg, 0) + 1
+        if "## Diagrams" in raw:
+            diagrams += 1
+
+    dated = sorted((n for n in notes if n["date"]), key=lambda n: n["date"], reverse=True)
+    lede, rest = (dated[0], dated[1:9]) if dated else (None, [])
+    span = f"{dated[-1]['date']} \u2192 {dated[0]['date']}" if dated else ""
+
+    open_n = 0
+    if state is not None:
+        with state._conn() as c:
+            open_n = c.execute(
+                "SELECT COUNT(*) n FROM task_map WHERE completed = 0"
+            ).fetchone()["n"]
+    chronic = state.chronic_tasks(4) if state is not None else []
+
+    out = [
+        "---",
+        "layout: page",
+        "aside: false",
+        "sidebar: false",
+        "---",
+        '<div class="v-front">',
+        # ── masthead ──
+        '<header class="v-mast">',
+        '<div class="v-mast-rule"></div>',
+        "<h1>the vault</h1>",
+        '<p class="v-mast-sub">everything you ever scribbled \u2014 '
+        "parsed, transcribed, searchable</p>",
+        '<div class="v-mast-meta">',
+        f"<span>{len(notes)} notes</span><span>{span}</span>"
+        f"<span>{diagrams} handwritten</span><span>{len(tag_counts)} tags</span>"
+        f"<span>{open_n} open todos</span>",
+        "</div>",
+        '<div class="v-mast-rule"></div>',
+        "</header>",
+    ]
+
+    # ── the lede: your most recent thinking, not a nav card ──
+    if lede:
+        out += [
+            '<section class="v-lede">',
+            '<p class="v-kicker">latest</p>',
+            f'<h2><a href="./notes/{lede["stem"]}">{_esc(lede["title"])}</a></h2>',
+            f'<p class="v-drop">{_esc(lede["summary"])}</p>' if lede["summary"] else "",
+            f'<p class="v-when">{lede["date"]}</p>',
+            "</section>",
+        ]
+
+    # ── columns ──
+    out.append('<div class="v-cols">')
+
+    out.append('<section class="v-col"><p class="v-kicker">recently</p><ul class="v-idx">')
+    for n in rest:
+        out.append(
+            f'<li><a href="./notes/{n["stem"]}"><b>{_esc(n["title"])}</b>'
+            f'<time>{n["date"]}</time></a></li>'
+        )
+    out.append("</ul></section>")
+
+    out.append('<section class="v-col"><p class="v-kicker">threads</p><div class="v-chips">')
+    for tg, n in sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))[:22]:
+        out.append(f'<a class="v-chip v-md" href="./tags#{_slug(tg)}">{_esc(tg)}<i>{n}</i></a>')
+    out.append("</div>")
+    if chronic:
+        out.append('<p class="v-kicker v-kicker-2">be honest</p><ul class="v-kill">')
+        for title, n in chronic[:5]:
+            out.append(f"<li><span>{n}\u00d7</span>{_esc(title)}</li>")
+        out.append("</ul>")
+    out.append("</section>")
+    out.append("</div>")
+
+    # ── the rest of the vault, as a ruled index rather than cards ──
+    out.append('<section class="v-more"><p class="v-kicker">also</p><div class="v-more-grid">')
+    for label, href, blurb in (
+        ("All notes", "./notes/", "every parsed note, full-text"),
+        ("Daily", "./notes/daily/", "rolled-over tasks + today"),
+        ("Timeline", "./timeline", "by date, 2021 onward"),
+        ("Tags", "./tags", "browse by topic"),
+        ("Graph", "./graph", "how notes connect"),
+        ("Insights", "./insights", "recurring themes"),
+        ("Analytics", "./analytics", "where the work sits"),
+        ("Duplicates", "./duplicates", "near-copies to merge"),
+    ):
+        out.append(f'<a href="{href}"><b>{label}</b><span>{blurb}</span></a>')
+    out.append("</div></section>")
+
+    now = _dt.date.today().isoformat()
+    out.append(f'<footer class="v-foot">built {now} \u00b7 private \u00b7 doing2done</footer>')
+    out.append("</div>")
+    dest = nd.parent / "index.md"
+    dest.write_text("\n".join(x for x in out if x) + "\n")
+    return str(dest)
+
+
+def _summary_of(raw: str) -> str:
+    m = re.search(r"^> \*\*TL;DR\*\*\s*(.+)$", raw, re.M)
+    return m.group(1).strip() if m else ""

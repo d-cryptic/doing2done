@@ -35,6 +35,7 @@ uv run d2d tags || true
 uv run d2d dedup || true
 uv run d2d timeline || true
 uv run d2d graph || true
+uv run d2d home || true   # front page is built from the notes, so it must follow them
 uv run d2d backup || notify "state backup failed"   # dedup map is irreplaceable
 uv run d2d push || notify "edge push failed"
 

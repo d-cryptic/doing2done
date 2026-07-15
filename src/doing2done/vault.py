@@ -33,13 +33,15 @@ def render_frontmatter(title: str, date: str | None, tags: list[str]) -> str:
 
 
 def note_date(result: NoteResult, fallback_date: str = "") -> str:
-    """The note's date, falling back to when Apple Notes last modified it.
+    """When the note was written — not what its text happens to say.
 
-    The classifier only emits a date when the note text mentions one, which is rare —
-    without this fallback most notes land dateless and drop out of the digest,
-    timeline, and dormancy checks entirely.
+    fallback_date is the note's own timestamp (creation, else last-modified) and wins
+    over the classifier's date. The classifier resolves relative dates against the run
+    date, so a note reading "Date: Today" would be re-dated to whenever the pipeline
+    last ran: re-ingesting silently reshuffled the timeline. The note's own timestamp
+    never moves. The classifier's date is only used when Apple Notes gives us nothing.
     """
-    return (result.date or "").split("T")[0] or (fallback_date or "").split("T")[0]
+    return (fallback_date or "").split("T")[0] or (result.date or "").split("T")[0]
 
 
 def note_stem(
