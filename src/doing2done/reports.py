@@ -83,7 +83,7 @@ def generate_tag_index(notes_dir: str) -> str:
         )
         out.append('<ul class="v-list">')
         for title, stem in sorted(by_tag[tag]):
-            out.append(f'<li><a href="./notes/{stem}">{_esc(title)}</a></li>')
+            out.append(f'<li><a href="./notes/{_esc(stem)}">{_esc(title)}</a></li>')
         out.append("</ul>")
     out.append("</div>")
     dest = nd.parent / "tags.md"
@@ -173,9 +173,9 @@ def generate_duplicates_page(notes_dir: str) -> str:
             f'<span class="v-meter"><span style="width:{pct}%"></span></span></div>'
         )
         out.append(
-            f'<div class="v-pair"><a href="./notes/{a["stem"]}">{_esc(a["title"])}</a>'
+            f'<div class="v-pair"><a href="./notes/{_esc(a["stem"])}">{_esc(a["title"])}</a>'
             f'<span class="v-vs">vs</span>'
-            f'<a href="./notes/{b["stem"]}">{_esc(b["title"])}</a></div>'
+            f'<a href="./notes/{_esc(b["stem"])}">{_esc(b["title"])}</a></div>'
         )
         out.append("</div>")
     out.append("</div>")
@@ -335,7 +335,7 @@ def generate_timeline(notes_dir: str) -> str:
         out.append(f'<div class="v-when">{_esc(d)}<i>{len(by_date[d])}</i></div>')
         out.append('<ul class="v-list">')
         for title, stem in sorted(by_date[d]):
-            out.append(f'<li><a href="./notes/{stem}">{_esc(title)}</a></li>')
+            out.append(f'<li><a href="./notes/{_esc(stem)}">{_esc(title)}</a></li>')
         out.append("</ul></div>")
     out.append("</div></div>")
     dest = nd.parent / "timeline.md"
@@ -467,7 +467,7 @@ def generate_home(settings: Settings, state=None, svc=None) -> str:
         out += [
             '<section class="v-lede">',
             '<p class="v-kicker">latest</p>',
-            f'<h2><a href="./notes/{lede["stem"]}">{_esc(lede["title"])}</a></h2>',
+            f'<h2><a href="./notes/{_esc(lede["stem"])}">{_esc(lede["title"])}</a></h2>',
             f'<p class="v-drop">{_esc(lede["summary"])}</p>' if lede["summary"] else "",
             f'<p class="v-when">{lede["date"]}</p>',
             "</section>",
@@ -479,7 +479,7 @@ def generate_home(settings: Settings, state=None, svc=None) -> str:
     out.append('<section class="v-col"><p class="v-kicker">recently</p><ul class="v-idx">')
     for n in rest:
         out.append(
-            f'<li><a href="./notes/{n["stem"]}"><b>{_esc(n["title"])}</b>'
+            f'<li><a href="./notes/{_esc(n["stem"])}"><b>{_esc(n["title"])}</b>'
             f'<time>{n["date"]}</time></a></li>'
         )
     out.append("</ul></section>")
@@ -502,6 +502,7 @@ def generate_home(settings: Settings, state=None, svc=None) -> str:
         ("All notes", "./notes/", "every parsed note, full-text"),
         ("Daily", "./notes/daily/", "rolled-over tasks + today"),
         ("Weekly", "./notes/weekly/", "the week, reviewed"),
+        ("Drafts", "./drafts/", "written from your notes"),
         ("Timeline", "./timeline", "by date, 2021 onward"),
         ("Tags", "./tags", "browse by topic"),
         ("Graph", "./graph", "how notes connect"),
@@ -590,7 +591,7 @@ def generate_period_index(notes_dir: str, sub: str, label: str) -> str:
             out.append('\n<div class="v-page">\n<p class="v-kicker">earlier</p>')
             out.append('<ul class="v-list">')
             for f in days[1:15]:
-                out.append(f'<li><a href="./{f.stem}">{f.stem}</a></li>')
+                out.append(f'<li><a href="./{_esc(f.stem)}">{_esc(f.stem)}</a></li>')
             out.append("</ul>\n</div>")
     dest = d / "index.md"
     dest.write_text("\n".join(out) + "\n")
@@ -648,10 +649,48 @@ def generate_notes_index(notes_dir: str) -> str:
         pen = ' <em class="v-pen" title="handwritten">\u270e</em>' if r["drawn"] else ""
         summary = f'<span>{_esc(r["summary"])}</span>' if r["summary"] else ""
         out.append(
-            f'<li><a href="./{r["stem"]}"><b>{_esc(r["title"])}{pen}</b>'
+            f'<li><a href="./{_esc(r["stem"])}"><b>{_esc(r["title"])}{pen}</b>'
             f'{summary}<time>{r["date"]}</time></a></li>'
         )
     out.append("</ul></div>")
     dest = nd / "index.md"
+    dest.write_text("\n".join(out) + "\n")
+    return str(dest)
+
+
+def generate_drafts_index(notes_dir: str) -> str:
+    """Every draft, listed -> docs/drafts/index.md.
+
+    d2d draft writes RAG-grounded drafts and publishes them, and nothing linked to
+    them — the same way the weekly review was orphaned. A page you can only reach by
+    already knowing its URL may as well not exist.
+    """
+    d = Path(notes_dir).parent / "drafts"
+    if not d.exists():
+        return ""
+    files = sorted(f for f in d.glob("*.md") if f.name != "index.md")
+    out = [
+        '<div class="v-page">',
+        '<p class="v-eyebrow">vault \u00b7 drafts</p>',
+        "<h1>Drafts</h1>",
+    ]
+    if not files:
+        out.append('<p class="v-empty">Nothing drafted yet \u2014 try '
+                   "<code>d2d draft &quot;a topic&quot;</code>.</p></div>")
+    else:
+        out.append(
+            f'<p class="v-note">{len(files)} draft(s), written from your own notes. '
+            "Private, like the rest of the vault.</p>"
+            '<ul class="v-idx v-idx-full">'
+        )
+        for f in files:
+            kind, _, rest = f.stem.partition("-")
+            title = rest.replace("-", " ") or f.stem
+            out.append(
+                f'<li><a href="./{_esc(f.stem)}"><b>{_esc(title)}</b>'
+                f'<time>{_esc(kind)}</time></a></li>'
+            )
+        out.append("</ul></div>")
+    dest = d / "index.md"
     dest.write_text("\n".join(out) + "\n")
     return str(dest)

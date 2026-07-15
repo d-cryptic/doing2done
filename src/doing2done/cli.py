@@ -410,6 +410,10 @@ def draft(
 
     s = get_settings()
     body, path = make_draft(topic, kind, s.vault_notes_dir, s)
+    if path:
+        from .reports import generate_drafts_index
+
+        generate_drafts_index(s.vault_notes_dir)  # otherwise the draft is unreachable
     if not path:
         rprint("[yellow]no relevant notes found[/yellow]")
         raise typer.Exit(1)
@@ -679,12 +683,13 @@ def unshare(
 @app.command()
 def home() -> None:
     """Rebuild the vault's front page from the notes themselves."""
-    from .reports import generate_home, generate_notes_index
+    from .reports import generate_drafts_index, generate_home, generate_notes_index
 
     s = get_settings()
     state = State(s.state_db)
     p = generate_home(s, state=state)
     generate_notes_index(s.vault_notes_dir)  # the notes index is built the same way
+    generate_drafts_index(s.vault_notes_dir)
     rprint(f"[green]home[/green] -> {p}")
 
 
