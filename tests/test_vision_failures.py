@@ -50,7 +50,10 @@ def test_successful_read_has_no_failures(tmp_path):
 
 def test_partial_failure_is_counted(tmp_path):
     good = {"kind": "h", "caption": "c", "transcription": "real text"}
-    with patch("doing2done.classify.vision.describe_page", side_effect=[good, RuntimeError("boom")]):
+    with patch(
+        "doing2done.classify.vision.describe_page",
+        side_effect=[good, RuntimeError("boom")],
+    ):
         descs, failures = _describe_diagrams(_media(tmp_path, n=2), _S())
     assert failures == 1
     assert [d["transcription"] for d in descs] == ["real text", ""]
