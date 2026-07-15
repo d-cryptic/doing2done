@@ -806,6 +806,9 @@ def daily(
         (d / f"{title.split(' — ')[-1]}.md").write_text(
             f"---\ntitle: {title!r}\n---\n\n" + md + "\n"
         )
+        from .reports import generate_daily_index
+
+        generate_daily_index(s.vault_notes_dir)  # landing page shows today's brief
         rprint("[green]vault[/green] daily written")
     if target in ("notes", "both"):
         try:
