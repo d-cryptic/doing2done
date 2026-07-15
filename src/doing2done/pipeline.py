@@ -11,12 +11,16 @@ from .config import Settings
 from .notes import export as _export
 from .notes import store as _store
 from .notes.media import NoteMedia, media_by_note, note_pk_from_jxa_id
+from .notify import notify
 from .providers.base import TaskDraft
 from .state import State, item_key
 from .todo import TodoService
 from .vault import archive_note, note_stem, write_note
 
 MAX_CHARS = 12000  # cap note text sent to the LLM (token + cost guard)
+# A note whose image we can't read is left unprocessed so the next run retries it.
+# Without a cap, an image that never reads costs a vision call every sync, forever.
+MAX_VISION_RETRIES = 3
 
 
 def _strip_html(html: str) -> str:
@@ -176,10 +180,26 @@ def run_ingest(
             if has_media and vision_failures and not diagram_text:
                 # Every word of this note is in an image we couldn't read. Writing it
                 # now produces a note that claims to be empty; watermarking it means we
-                # never look again. Leave it untouched so the next run retries.
-                report.errors += 1
-                print(f"  ! vision failed on '{note.name[:40]}' - left for retry")
-                continue
+                # never look again. Leave it untouched so the next run retries — but
+                # only so many times, or a permanently unreadable image bills us a
+                # vision call every sync forever.
+                tries = state.vision_failures(note.id) + 1
+                if tries <= MAX_VISION_RETRIES:
+                    if apply:
+                        state.bump_vision_failure(note.id)
+                    report.errors += 1
+                    print(
+                        f"  ! vision failed on '{note.name[:40]}' "
+                        f"- retry {tries}/{MAX_VISION_RETRIES}"
+                    )
+                    continue
+                # Out of retries: process it with whatever we have and stop paying for
+                # it. The note keeps its image, so nothing is lost but the transcript.
+                print(f"  ! vision keeps failing on '{note.name[:40]}' - giving up, "
+                      "writing the note without a transcript")
+                notify(f"vision unreadable after {MAX_VISION_RETRIES} tries: {note.name[:60]}")
+            elif has_media and apply and diagram_text:
+                state.clear_vision_failure(note.id)
             combined = (text + ("\n\n" + diagram_text if diagram_text else "")).strip()
             result = classify_note(
                 combined or note.name,
