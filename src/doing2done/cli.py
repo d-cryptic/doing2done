@@ -659,11 +659,12 @@ def unshare(
 @app.command()
 def home() -> None:
     """Rebuild the vault's front page from the notes themselves."""
-    from .reports import generate_home
+    from .reports import generate_home, generate_notes_index
 
     s = get_settings()
     state = State(s.state_db)
     p = generate_home(s, state=state)
+    generate_notes_index(s.vault_notes_dir)  # the notes index is built the same way
     rprint(f"[green]home[/green] -> {p}")
 
 

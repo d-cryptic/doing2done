@@ -594,3 +594,48 @@ def generate_daily_index(notes_dir: str) -> str:
     dest = d / "index.md"
     dest.write_text("\n".join(out) + "\n")
     return str(dest)
+
+
+def generate_notes_index(notes_dir: str) -> str:
+    """Every note, listed -> docs/notes/index.md.
+
+    Was a hand-written stub describing itself ("every parsed note lands here") while
+    listing nothing, so the only way to browse was the sidebar. It also advertised a
+    "press /" shortcut that isn't bound.
+    """
+    nd = Path(notes_dir)
+    rows = []
+    for md in nd.glob("*.md"):
+        if md.name == "index.md":
+            continue
+        raw = md.read_text()
+        fm = _frontmatter(raw)
+        rows.append({
+            "title": fm.get("title", md.stem),
+            "stem": md.stem,
+            "date": (fm.get("date", "") or "").split("T")[0],
+            "summary": _summary_of(raw),
+            "drawn": "## Diagrams" in raw,
+        })
+    rows.sort(key=lambda r: (r["date"] or "0000", r["title"]), reverse=True)
+
+    out = [
+        '<div class="v-page">',
+        '<p class="v-eyebrow">vault \u00b7 notes</p>',
+        "<h1>Notes</h1>",
+        f'<p class="v-note">{len(rows)} notes, newest first. '
+        f'{sum(1 for r in rows if r["drawn"])} are handwritten \u2014 their pages carry '
+        "the original scan and its transcription.</p>",
+        '<ul class="v-idx v-idx-full">',
+    ]
+    for r in rows:
+        pen = ' <em class="v-pen" title="handwritten">\u270e</em>' if r["drawn"] else ""
+        summary = f'<span>{_esc(r["summary"])}</span>' if r["summary"] else ""
+        out.append(
+            f'<li><a href="./{r["stem"]}"><b>{_esc(r["title"])}{pen}</b>'
+            f'{summary}<time>{r["date"]}</time></a></li>'
+        )
+    out.append("</ul></div>")
+    dest = nd / "index.md"
+    dest.write_text("\n".join(out) + "\n")
+    return str(dest)
