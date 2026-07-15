@@ -556,3 +556,41 @@ def linkify_titles(markdown: str, notes_dir: str) -> str:
 
     # only inside the quotes the model already uses to cite a note
     return re.sub(rf'(["\u201c\u201d])({pattern})\1', repl, markdown, flags=re.I)
+
+
+def generate_daily_index(notes_dir: str) -> str:
+    """Today's brief, inline -> docs/notes/daily/index.md.
+
+    The landing page was a hand-written stub that described the feature
+    ("rolled-over tasks + today's focus") and showed none of it, while the actual
+    briefs hid in the sidebar. Tapping Daily should answer "what am I doing today",
+    not explain what Daily is.
+    """
+    d = Path(notes_dir) / "daily"
+    if not d.exists():
+        return ""
+    days = sorted(
+        (f for f in d.glob("*.md") if f.name != "index.md"), reverse=True
+    )
+    out = [
+        '<div class="v-page">',
+        '<p class="v-eyebrow">vault \u00b7 daily</p>',
+        "</div>",
+        "",
+    ]
+    if not days:
+        out.append("# Daily notes\n")
+        out.append('<p class="v-empty">No brief yet — the sync writes one each morning.</p>')
+    else:
+        latest = days[0]
+        body = re.sub(r"^---\n.*?\n---\n", "", latest.read_text(), flags=re.S).strip()
+        out.append(body)
+        if len(days) > 1:
+            out.append('\n<div class="v-page">\n<p class="v-kicker">earlier</p>')
+            out.append('<ul class="v-list">')
+            for f in days[1:15]:
+                out.append(f'<li><a href="./{f.stem}">{f.stem}</a></li>')
+            out.append("</ul>\n</div>")
+    dest = d / "index.md"
+    dest.write_text("\n".join(out) + "\n")
+    return str(dest)
