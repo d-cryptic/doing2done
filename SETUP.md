@@ -64,7 +64,7 @@ Two surfaces hold your content outside the Mac; both are encrypted:
 
 | Surface | Protection |
 |---|---|
-| **Vault repo (GitHub)** | `git-crypt` — notes/assets are ciphertext in the remote. The working tree stays plaintext, so the VitePress build and its search are unaffected. |
+| **Vault repo (GitHub)** | `git-crypt` — notes, assets **and every generated page that quotes them** (front page, insights, tags, timeline, graph, analytics, duplicates) are ciphertext in the remote. The working tree stays plaintext, so the VitePress build and its search are unaffected. See `vault-template/.gitattributes`: a new generated page must be added there in the same commit, or it publishes your notes in cleartext. |
 | **State backups (R2)** | AES-256 (`BACKUP_KEY`) — `state.db` holds every task title. |
 | **Deployed site** | Cloudflare Access (single identity). Plaintext by necessity — it has to render. |
 
