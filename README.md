@@ -96,11 +96,17 @@ uv run d2d tags                                           # regenerate the vault
 uv run d2d weekly                                         # LLM weekly review digest
 uv run d2d relate                                         # backlinks/related-notes (TF-IDF + tags)
 uv run d2d ask "what did I decide about X?"               # RAG over your notes
-uv run d2d capture                                        # pull Telegram messages -> todos/notes
+uv run d2d capture                                        # pull queued captures -> todos/notes
 uv run d2d dedup                                          # near-duplicate notes report
 uv run d2d enrich-links                                   # fetch + summarize URLs in notes
 uv run d2d insights                                       # LLM themes/patterns report
-uv run d2d analytics / timeline / graph                   # dashboards + views
+uv run d2d analytics / timeline / graph                   # dashboards + views (graph nodes link to notes)
+uv run d2d home                                           # rebuild the vault's front page from the notes
+uv run d2d prune [--apply]                                # archive files orphaned by a re-titled note
+uv run d2d retag [--apply]                                # one spelling per tag (open_source -> open-source)
+uv run d2d share "note title" [--days N]                  # one note, one unguessable link
+uv run d2d shares                                         # list share links + view counts
+uv run d2d unshare <token> | --all                        # revoke instantly
 uv run d2d eval                                           # extraction quality harness
 uv run d2d eval --compare "modelA,modelB"                 # A/B models on your own cases
 uv run d2d health                                         # canary: silent-failure detection
