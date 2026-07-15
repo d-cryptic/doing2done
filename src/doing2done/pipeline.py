@@ -36,8 +36,16 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
-def _describe_diagrams(items: list[NoteMedia], settings: Settings) -> list[dict]:
-    """Vision-describe each distinct diagram page once (transcription + caption)."""
+def _describe_diagrams(
+    items: list[NoteMedia], settings: Settings
+) -> tuple[list[dict], int]:
+    """Vision-describe each distinct diagram page once (transcription + caption).
+
+    Returns (descriptions, failures). The failure count matters: a handwritten note's
+    entire content lives in its image, so a transient vision error is NOT the same as
+    "this image has no text" — conflating them writes a note that says the page is
+    empty and watermarks it, losing the page for good.
+    """
     import hashlib
     from difflib import SequenceMatcher
 
@@ -50,6 +58,7 @@ def _describe_diagrams(items: list[NoteMedia], settings: Settings) -> list[dict]
     out: list[dict] = []
     kept: list[str] = []
     seen_img: set[str] = set()
+    failures = 0
     for m in [x for x in items if x.png_paths]:
         for src in m.png_paths:
             try:
@@ -63,8 +72,11 @@ def _describe_diagrams(items: list[NoteMedia], settings: Settings) -> list[dict]
                     src, api_key=settings.llm_api_key, model=settings.llm_model,
                     base_url=settings.llm_base_url,
                 )
+                if not (desc.get("transcription") or desc.get("caption")):
+                    failures += 1  # a page that yields nothing is a failed read, not a blank page
             except Exception:
                 desc = {}
+                failures += 1
             norm = _norm(desc)
             if norm and any(SequenceMatcher(None, norm, k).ratio() >= 0.85 for k in kept):
                 continue
@@ -74,7 +86,7 @@ def _describe_diagrams(items: list[NoteMedia], settings: Settings) -> list[dict]
                 "src": src, "kind": desc.get("kind", ""),
                 "caption": desc.get("caption", ""), "transcription": desc.get("transcription", ""),
             })
-    return out
+    return out, failures
 
 
 def _persist_diagrams(stem: str, descs: list[dict], notes_dir: str) -> tuple[str, int]:
@@ -155,10 +167,19 @@ def run_ingest(
         try:
             # Transcribe handwriting/diagrams FIRST, then classify on the real content
             # (a handwritten note has ~no typed text — its content lives in the drawing).
-            descs = _describe_diagrams(drawings, settings) if has_media else []
+            descs, vision_failures = (
+                _describe_diagrams(drawings, settings) if has_media else ([], 0)
+            )
             diagram_text = "\n".join(
                 d["transcription"] for d in descs if d.get("transcription")
             ).strip()
+            if has_media and vision_failures and not diagram_text:
+                # Every word of this note is in an image we couldn't read. Writing it
+                # now produces a note that claims to be empty; watermarking it means we
+                # never look again. Leave it untouched so the next run retries.
+                report.errors += 1
+                print(f"  ! vision failed on '{note.name[:40]}' - left for retry")
+                continue
             combined = (text + ("\n\n" + diagram_text if diagram_text else "")).strip()
             result = classify_note(
                 combined or note.name,
