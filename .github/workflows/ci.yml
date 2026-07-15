@@ -4,7 +4,7 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -12,6 +12,25 @@ jobs:
       - name: Sync (core + dev)
         run: uv sync --extra dev
       - name: Lint
-        run: uv run ruff check src/
+        run: uv run ruff check src/ tests/
       - name: Test
         run: uv run pytest -q
+
+  # The worker had no gate at all, and it shows: PR #31 deleted routeCapture,
+  # mcpHandle and MCP_TOOLS while leaving every call site intact. wrangler bundles
+  # with esbuild, which transpiles without type-checking, so both /capture and /mcp
+  # shipped returning 500 and stayed broken. tsc catches exactly this.
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        run: npx tsc --noEmit
