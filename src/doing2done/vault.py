@@ -32,9 +32,21 @@ def render_frontmatter(title: str, date: str | None, tags: list[str]) -> str:
     )
 
 
-def note_stem(result: NoteResult, note_id: str = "") -> str:
+def note_date(result: NoteResult, fallback_date: str = "") -> str:
+    """The note's date, falling back to when Apple Notes last modified it.
+
+    The classifier only emits a date when the note text mentions one, which is rare —
+    without this fallback most notes land dateless and drop out of the digest,
+    timeline, and dormancy checks entirely.
+    """
+    return (result.date or "").split("T")[0] or (fallback_date or "").split("T")[0]
+
+
+def note_stem(
+    result: NoteResult, note_id: str = "", fallback_date: str = ""
+) -> str:
     """Stable, unique file stem: date + slug + short note-id hash (avoids collisions)."""
-    prefix = (result.date or "").split("T")[0]
+    prefix = note_date(result, fallback_date).split("T")[0]
     base = f"{prefix}-{slugify(result.title)}".strip("-")
     if note_id:
         base += "-" + hashlib.sha1(note_id.encode()).hexdigest()[:6]
@@ -42,12 +54,16 @@ def note_stem(result: NoteResult, note_id: str = "") -> str:
 
 
 def write_note(
-    result: NoteResult, notes_dir: str, extra_markdown: str = "", note_id: str = ""
+    result: NoteResult,
+    notes_dir: str,
+    extra_markdown: str = "",
+    note_id: str = "",
+    fallback_date: str = "",
 ) -> str:
     d = Path(notes_dir)
     d.mkdir(parents=True, exist_ok=True)
-    path = d / f"{note_stem(result, note_id)}.md"
-    fm = render_frontmatter(result.title, result.date, result.tags)
+    path = d / f"{note_stem(result, note_id, fallback_date)}.md"
+    fm = render_frontmatter(result.title, note_date(result, fallback_date), result.tags)
     parts = []
     if result.summary:
         parts.append(f"> **TL;DR** {result.summary}\n")

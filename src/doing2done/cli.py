@@ -573,6 +573,47 @@ def weekly() -> None:
 
 
 @app.command()
+def digest(
+    days: int = typer.Option(7, help="Look-back window."),
+    send: bool = typer.Option(False, help="Push it to Telegram instead of printing."),
+) -> None:
+    """Weekly review: what you captured, closed, and keep deferring."""
+    from .digest import compose_digest
+    from .notify import send_telegram
+
+    s = get_settings()
+    text = compose_digest(s, State(s.state_db), days=days)
+    if not text:
+        rprint("[yellow]nothing to report[/yellow]")
+        return
+    if not send:
+        rprint(text)
+        return
+    rprint("[green]digest sent[/green]" if send_telegram(text)
+           else "[red]send failed — set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID[/red]")
+
+
+@app.command()
+def surface(
+    send: bool = typer.Option(False, help="Push it to Telegram instead of printing."),
+) -> None:
+    """Nudge: open todos going stale and notes gone dormant."""
+    from .digest import compose_surface
+    from .notify import send_telegram
+
+    s = get_settings()
+    text = compose_surface(s, State(s.state_db))
+    if not text:
+        rprint("[green]nothing going stale[/green]")
+        return
+    if not send:
+        rprint(text)
+        return
+    rprint("[green]surfaced[/green]" if send_telegram(text)
+           else "[red]send failed — set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID[/red]")
+
+
+@app.command()
 def daily(
     target: str = typer.Option("both", help="Where to write: notes | vault | both."),
     folder: str = typer.Option("Daily", help="Apple Notes folder for the daily note."),

@@ -47,7 +47,13 @@ CREATE TABLE IF NOT EXISTS notes_seen (
 
 # columns added after v1 — applied idempotently for existing DBs
 _MIGRATIONS = {
-    "task_map": {"project_id": "TEXT", "completed": "INTEGER NOT NULL DEFAULT 0"},
+    "task_map": {
+        "project_id": "TEXT",
+        "completed": "INTEGER NOT NULL DEFAULT 0",
+        # When the todo first appeared. Distinct from updated_at, which every
+        # ingest bumps — so only created_at can tell you how long it has been open.
+        "created_at": "TEXT",
+    },
 }
 
 
@@ -66,6 +72,10 @@ class State:
                 for col, decl in cols.items():
                     if col not in have:
                         c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+            # Rows that predate created_at: best available estimate is updated_at.
+            c.execute(
+                "UPDATE task_map SET created_at = updated_at WHERE created_at IS NULL"
+            )
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -88,10 +98,16 @@ class State:
         self, note_id: str, title: str, task_id: str, project_id: str | None
     ) -> None:
         with self._conn() as c:
+            # ON CONFLICT (not INSERT OR REPLACE): replacing the row would reset
+            # created_at every ingest and make "how long has this been open?" unanswerable.
             c.execute(
-                "INSERT OR REPLACE INTO task_map"
-                "(key, note_id, task_id, project_id, title, completed) "
-                "VALUES (?, ?, ?, ?, ?, 0)",
+                "INSERT INTO task_map"
+                "(key, note_id, task_id, project_id, title, completed, created_at) "
+                "VALUES (?, ?, ?, ?, ?, 0, datetime('now')) "
+                "ON CONFLICT(key) DO UPDATE SET "
+                "  note_id = excluded.note_id, task_id = excluded.task_id, "
+                "  project_id = excluded.project_id, title = excluded.title, "
+                "  updated_at = datetime('now')",
                 (item_key(note_id, title), note_id, task_id, project_id, title),
             )
 
