@@ -24,6 +24,16 @@ uv run d2d daily --target both || notify "daily brief failed"
 uv run d2d calendar --apply || true   # mirror due dates to Apple Calendar
 uv run d2d analytics || true
 uv run d2d librarian --apply || true   # garden weak metadata (no-op when tidy)
+
+# 1c) vault hygiene — all local (no LLM), so it's cheap to run every sync.
+# A retitle changes a note's stem, which strands the old file and every link
+# pointing at it; prune archives the strays and relate rewrites the links.
+uv run d2d prune --apply || true
+uv run d2d relate || true
+uv run d2d tags || true
+uv run d2d dedup || true
+uv run d2d timeline || true
+uv run d2d graph || true
 uv run d2d backup || notify "state backup failed"   # dedup map is irreplaceable
 uv run d2d push || notify "edge push failed"
 
