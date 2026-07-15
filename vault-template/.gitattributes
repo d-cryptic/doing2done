@@ -1,0 +1,20 @@
+# Encrypt vault CONTENT at rest in the remote.
+#
+# Every page that carries note content must be listed. The generated dashboards do:
+# the front page alone holds the latest note's title and TL;DR, recent titles, tags
+# and chronic task titles. Adding a new generated page? Add it here in the same
+# commit, or it publishes your notes in cleartext. The working tree stays plaintext,
+# so VitePress build + local search are unaffected; the deployed site is gated by
+# Cloudflare Access. Config/build files stay readable so the repo is still workable.
+docs/notes/**/*.md   filter=git-crypt diff=git-crypt
+docs/notes/**/*.png  filter=git-crypt diff=git-crypt
+docs/drafts/**       filter=git-crypt diff=git-crypt
+archive/**           filter=git-crypt diff=git-crypt
+docs/index.md        filter=git-crypt diff=git-crypt
+docs/insights.md     filter=git-crypt diff=git-crypt
+docs/timeline.md     filter=git-crypt diff=git-crypt
+docs/tags.md         filter=git-crypt diff=git-crypt
+docs/duplicates.md   filter=git-crypt diff=git-crypt
+docs/analytics.md    filter=git-crypt diff=git-crypt
+docs/graph.md        filter=git-crypt diff=git-crypt
+.gitattributes       !filter !diff
