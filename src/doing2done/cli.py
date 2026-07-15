@@ -729,6 +729,22 @@ def retag(
 
 
 @app.command()
+def linkcheck() -> None:
+    """Find internal links that resolve to nothing (VitePress misses raw HTML ones)."""
+    from .linkcheck import broken_links
+
+    s = get_settings()
+    bad = broken_links(str(Path(s.vault_notes_dir).parent))
+    if not bad:
+        rprint("[green]links ok[/green]")
+        return
+    for page, href in bad[:20]:
+        rprint(f"  [red]{page}[/red] -> {href}")
+    rprint(f"[red]{len(bad)} broken link(s)[/red]")
+    raise typer.Exit(1)
+
+
+@app.command()
 def prune(
     apply: bool = typer.Option(False, help="Actually archive (default: dry run)."),
 ) -> None:

@@ -36,6 +36,8 @@ uv run d2d dedup || true
 uv run d2d timeline || true
 uv run d2d graph || true
 uv run d2d home || true   # front page is built from the notes, so it must follow them
+# The dashboards emit raw HTML anchors, which VitePress's dead-link check ignores.
+uv run d2d linkcheck || notify "vault has broken internal links" 
 uv run d2d backup || notify "state backup failed"   # dedup map is irreplaceable
 uv run d2d push || notify "edge push failed"
 
