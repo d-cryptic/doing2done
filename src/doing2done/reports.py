@@ -341,25 +341,57 @@ def generate_timeline(notes_dir: str) -> str:
 
 
 def generate_graph(notes_dir: str) -> str:
-    """Mermaid backlink graph -> docs/graph.md."""
+    """A note graph you can walk -> docs/graph.md.
+
+    Every node links to its note. Rendering a map you can't click is decoration:
+    you can see that two notes are related but not go and read them.
+    """
     from .relate import top_edges
 
     edges = top_edges(notes_dir)
-    ids: dict[str, str] = {}
+    if not edges:
+        dest = Path(notes_dir).parent / "graph.md"
+        dest.write_text(
+            '<div class="v-page"><p class="v-eyebrow">vault \u00b7 graph</p>'
+            "<h1>Note graph</h1>"
+            '<p class="v-empty">Not enough notes are related yet.</p></div>\n'
+        )
+        return str(dest)
 
-    def nid(title: str) -> str:
-        if title not in ids:
-            ids[title] = f"n{len(ids)}"
-        return ids[title]
+    ids: dict[str, str] = {}
+    stems: dict[str, str] = {}
+
+    def nid(node: dict) -> str:
+        key = node["title"]
+        if key not in ids:
+            ids[key] = f"n{len(ids)}"
+            stems[ids[key]] = node["stem"]
+        return ids[key]
+
+    def label(s: str) -> str:
+        """One line, always. Mermaid doesn't grow a node to fit a wrapped label, so
+        anything long enough to wrap gets its second line sliced off."""
+        s = s.replace('"', "'")
+        return s if len(s) <= 30 else s[:29].rstrip() + "\u2026"
 
     lines = ["graph LR"]
     for a, b, _ in edges:
-        safe_a = a.replace('"', "'")[:40]
-        safe_b = b.replace('"', "'")[:40]
-        lines.append(f'  {nid(a)}["{safe_a}"] --- {nid(b)}["{safe_b}"]')
-    body = "```mermaid\n" + "\n".join(lines) + "\n```" if edges else "*not enough notes yet*"
+        lines.append(f'  {nid(a)}["{label(a["title"])}"] --- {nid(b)}["{label(b["title"])}"]')
+    # click makes each node navigable; needs securityLevel loose (set in config.mts)
+    for node_id, stem in stems.items():
+        lines.append(f'  click {node_id} "./notes/{stem}"')
+
+    body = "```mermaid\n" + "\n".join(lines) + "\n```"
     dest = Path(notes_dir).parent / "graph.md"
-    dest.write_text(f"# Note graph\n\nHow your notes connect (strongest links).\n\n{body}\n")
+    dest.write_text(
+        '<div class="v-page">\n'
+        '<p class="v-eyebrow">vault \u00b7 graph</p>\n'
+        "<h1>Note graph</h1>\n"
+        f'<p class="v-note">{len(ids)} notes, {len(edges)} strongest links. '
+        "Tap a node to open the note.</p>\n"
+        "</div>\n\n"
+        f"{body}\n"
+    )
     return str(dest)
 
 

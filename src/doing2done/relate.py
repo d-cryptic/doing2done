@@ -152,15 +152,23 @@ def find_duplicates(notes_dir: str, threshold: float = 0.72) -> list[tuple[dict,
 
 
 def top_edges(notes_dir: str, max_edges: int = 60, threshold: float = 0.18):
-    """Return [(title_a, title_b, sim)] strongest note-note edges for a graph."""
+    """Return [({title, stem}, {title, stem}, sim)] strongest note-note edges.
+
+    Carries the stem so the graph's nodes can link to the notes — the whole point of
+    seeing the map is being able to walk it.
+    """
     pairs = []
     nd = Path(notes_dir)
     files = [f for f in nd.glob("*.md") if f.name != "index.md"]
     docs = []
     for f in files:
         fm, body = _frontmatter(f.read_text())
-        docs.append({"title": fm.get("title", f.stem), "tags": set(fm.get("tags", []) or []),
-                     "tf": Counter(_tokens(f"{fm.get('title','')} {body}"))})
+        docs.append({
+            "title": fm.get("title", f.stem),
+            "stem": f.stem,
+            "tags": set(fm.get("tags", []) or []),
+            "tf": Counter(_tokens(f"{fm.get('title', '')} {body}")),
+        })
     if len(docs) < 2:
         return []
     df = Counter()
@@ -182,6 +190,10 @@ def top_edges(notes_dir: str, max_edges: int = 60, threshold: float = 0.18):
             dot = sum(w * big.get(t, 0.0) for t, w in small.items())
             sim = dot / (ni * nj) + 0.05 * len(docs[i]["tags"] & docs[j]["tags"])
             if sim >= threshold:
-                pairs.append((docs[i]["title"], docs[j]["title"], sim))
+                pairs.append((
+                    {"title": docs[i]["title"], "stem": docs[i]["stem"]},
+                    {"title": docs[j]["title"], "stem": docs[j]["stem"]},
+                    sim,
+                ))
     pairs.sort(key=lambda x: -x[2])
     return pairs[:max_edges]
