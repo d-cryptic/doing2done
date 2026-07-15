@@ -130,6 +130,10 @@ textarea:focus{border-color:#3d382f;box-shadow:0 0 0 4px rgba(217,154,60,.07)}
   padding:.3rem .65rem;font:inherit;font-size:.78rem;cursor:pointer;
   transition:border-color .15s,color .15s}
 .ex button:hover{border-color:var(--amber);color:var(--amber)}
+.answer{font-size:15px;line-height:1.65;color:var(--vellum);background:var(--ink2);
+  border:1px solid var(--line);border-left:2px solid var(--amber);border-radius:0 12px 12px 0;
+  padding:1rem 1.1rem;margin:0 0 1.4rem}
+.answer b{color:#fff}
 .recent{margin:2.6rem 0 0}
 .recent h2{font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
   color:var(--faint);font-weight:400;margin:0 0 .7rem}
@@ -184,7 +188,7 @@ function mode(m){
   $('go').textContent = m==='ask'?'Ask my notes':'Capture it';
   $('q').placeholder = m==='ask'?'what did I decide about…':'a thought, a todo, anything…';
   $('hint').textContent = m==='ask'
-    ? '⌘+enter · searches meaning, not keywords'
+    ? '⌘+enter · answers from your notes, with sources'
     : '⌘+enter · lands in your list within seconds';
   $('out').innerHTML='';
   document.getElementById('ex').style.display = m==='ask' ? '' : 'none';
@@ -192,6 +196,7 @@ function mode(m){
 }
 $('q').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')send();});
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
+function fmt(s){return esc(s).replace(/\\*\\*(.+?)\\*\\*/g,'<b>$1</b>').replace(/\\n/g,'<br>');}
 async function send(){
   const v=$('q').value.trim(); if(!v) return;
   $('go').disabled=true;
@@ -204,12 +209,18 @@ async function send(){
       if(!r.ok) throw new Error('search is down (HTTP '+r.status+')');
       const d=await r.json();
       const hits=d.hits||[];
-      if(!hits.length){$('out').innerHTML='<p class="empty">Nothing in your notes touches that — yet.</p>';}
+      const answer=(d.answer||'').trim();
+      if(!answer && !hits.length){$('out').innerHTML='<p class="empty">Nothing in your notes touches that — yet.</p>';}
       else{
-        $('out').innerHTML='<div class="lede">'+hits.length+' related notes</div>'+hits.map((h,i)=>
-          '<div class="hit" style="animation-delay:'+(i*45)+'ms"><div style="flex:1"><div class="t">'+esc(h.title||'untitled')+
-          '</div><div class="bar" style="width:'+Math.round((h.score||0)*100)+'%"></div></div>'+
-          '<div class="s">'+((h.score||0).toFixed(2))+'</div></div>').join('');
+        var html = answer ? '<div class="answer">'+fmt(answer)+'</div>' : '';
+        if(hits.length){
+          html += '<div class="lede">'+(answer?'from these notes':hits.length+' related notes')+'</div>'+
+            hits.map((h,i)=>
+            '<div class="hit" style="animation-delay:'+(i*45)+'ms"><div style="flex:1"><div class="t">'+esc(h.title||'untitled')+
+            '</div><div class="bar" style="width:'+Math.round((h.score||0)*100)+'%"></div></div>'+
+            '<div class="s">'+((h.score||0).toFixed(2))+'</div></div>').join('');
+        }
+        $('out').innerHTML=html;
       }
     }else{
       const r=await fetch('/app/capture',{method:'POST',headers:{'content-type':'application/json'},
@@ -644,10 +655,9 @@ async function mcpHandle(msg: any, env: Env): Promise<any> {
     const args = params?.arguments ?? {};
     let text = "";
     if (name === "ask_notes") {
-      const hits = await semanticAsk(env, String(args.query ?? ""));
-      text = hits.length
-        ? "Relevant notes:\n" + hits.map((h: any) => `- ${h.title} (${h.score})`).join("\n")
-        : "No matching notes.";
+      const { answer, sources } = await semanticAnswer(env, String(args.query ?? ""));
+      const cited = sources.map((h: any) => h.title).join(", ");
+      text = (answer || "No matching notes.") + (cited ? `\n\nSources: ${cited}` : "");
     } else if (name === "capture") {
       await storeCapture(env, "mcp", String(args.text ?? ""));
       text = "Captured — it will sync into todos/notes.";
@@ -657,6 +667,72 @@ async function mcpHandle(msg: any, env: Env): Promise<any> {
     return ok({ content: [{ type: "text", text }] });
   }
   return { jsonrpc: "2.0", id, error: { code: -32601, message: `unknown method: ${method}` } };
+}
+
+const ANSWER_SYSTEM = `You answer a question using ONLY the notes provided. These are
+the user's own handwritten/personal notes.
+Rules:
+- Answer from the notes only. Never add facts that aren't there.
+- If the notes don't contain the answer, say exactly: "I don't find that in your notes."
+- Be direct and specific — quote the note where it helps.
+- Cite the notes you used by their exact title in a "Sources:" line at the end.
+- Keep it tight: a few sentences, not an essay.`;
+
+/** Retrieve the most relevant notes, then answer the question grounded in them.
+ *  Returns the answer text plus the sources it drew on — the "ask your notes"
+ *  promise, which until now only returned a list of titles to go read yourself. */
+async function semanticAnswer(env: Env, q: string): Promise<{ answer: string; sources: any[] }> {
+  const hits = await semanticAsk(env, q);
+  if (!hits.length) {
+    return { answer: "I don't find that in your notes.", sources: [] };
+  }
+  // Pull the bodies of the top matches to ground on. Cap total so the prompt stays sane.
+  const top = hits.slice(0, 5);
+  const ids = top.map((h: any) => h.note_id);
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await env.DB.prepare(
+    `SELECT note_id, title, body FROM notes WHERE note_id IN (${placeholders})`
+  ).bind(...ids).all();
+  const byId = new Map((rows.results ?? []).map((r: any) => [r.note_id, r]));
+
+  let budget = 6000;
+  const context = top
+    .map((h: any) => {
+      const r: any = byId.get(h.note_id);
+      if (!r) return "";
+      const body = String(r.body || "").slice(0, Math.max(0, budget));
+      budget -= body.length;
+      return `### ${r.title}
+${body}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  if (!context.trim() || !env.LLM_API_KEY) {
+    return { answer: "I don't find that in your notes.", sources: top };
+  }
+
+  const base = (env.LLM_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  try {
+    const r = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.LLM_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: env.LLM_MODEL || "google/gemini-2.5-flash",
+        temperature: 0.2,
+        messages: [
+          { role: "system", content: ANSWER_SYSTEM },
+          { role: "user", content: `Question: ${q}\n\nNotes:\n${context}` },
+        ],
+      }),
+    });
+    const out: any = await r.json();
+    const answer = out?.choices?.[0]?.message?.content?.trim();
+    return { answer: answer || "I don't find that in your notes.", sources: top };
+  } catch {
+    // Retrieval still works even if synthesis fails — hand back the matches.
+    return { answer: "", sources: top };
+  }
 }
 
 export default {
@@ -784,7 +860,12 @@ export default {
       if (!bearerOk(req, env)) return json({ error: "unauthorized" }, 401);
       const q = url.searchParams.get("q") ?? "";
       if (!q) return json({ error: "missing q" }, 400);
-      return json({ query: q, hits: await semanticAsk(env, q) });
+      // ?hits=1 keeps the old retrieval-only shape for callers that want it.
+      if (url.searchParams.get("hits") === "only") {
+        return json({ query: q, hits: await semanticAsk(env, q) });
+      }
+      const { answer, sources } = await semanticAnswer(env, q);
+      return json({ query: q, answer, hits: sources });
     }
 
     // ── Gated web app (Cloudflare Access) ──
@@ -950,10 +1031,10 @@ export default {
         reply = "doing2done ✎\nSend any thought — typed or a voice note — and I'll turn it into todos + a note.\nAsk your notes: `ask what did I decide about X`";
       } else if (low.startsWith("/ask ") || low.startsWith("ask ")) {
         const q = text.replace(/^\/?ask\s+/i, "");
-        const hits = await semanticAsk(env, q);
-        reply = hits.length
-          ? "🔎 related notes:\n• " + hits.slice(0, 6).map((h: any) => h.title).join("\n• ")
-          : "Nothing in your notes touches that yet.";
+        const { answer, sources } = await semanticAnswer(env, q);
+        const cited = sources.slice(0, 4).map((h: any) => h.title).join("\n• ");
+        reply = (answer || "Nothing in your notes touches that yet.")
+          + (cited ? `\n\n_from:_\n• ${cited}` : "");
       } else {
         const id = await storeCapture(env, viaVoice ? "voice" : "telegram", text);
         created = await routeCapture(env, id, text);
