@@ -505,6 +505,7 @@ def generate_home(settings: Settings, state=None, svc=None) -> str:
         ("Drafts", "./drafts/", "written from your notes"),
         ("Timeline", "./timeline", "by date, 2021 onward"),
         ("Tags", "./tags", "browse by topic"),
+        ("Mentions", "./mentions", "names, projects, tools"),
         ("Graph", "./graph", "how notes connect"),
         ("Insights", "./insights", "recurring themes"),
         ("Analytics", "./analytics", "where the work sits"),
@@ -692,5 +693,51 @@ def generate_drafts_index(notes_dir: str) -> str:
             )
         out.append("</ul></div>")
     dest = d / "index.md"
+    dest.write_text("\n".join(out) + "\n")
+    return str(dest)
+
+
+def generate_mentions_page(notes_dir: str) -> str:
+    """A cross-reference of recurring named entities -> docs/mentions.md.
+
+    Tags are topical labels the classifier assigns; this is the complementary view —
+    the specific orgs, projects, tech and certs you name, and every note each shows
+    up in. Built locally from the note text, so it costs nothing to keep current.
+    """
+    from .entities import extract
+
+    ents = extract(notes_dir)
+    out = [
+        '<div class="v-page">',
+        '<p class="v-eyebrow">vault \u00b7 mentions</p>',
+        "<h1>Mentions</h1>",
+    ]
+    if not ents:
+        out.append('<p class="v-empty">No entity recurs across notes yet.</p></div>')
+        dest = Path(notes_dir).parent / "mentions.md"
+        dest.write_text("\n".join(out) + "\n")
+        return str(dest)
+
+    ordered = sorted(ents.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    out.append(
+        f'<p class="v-note">{len(ordered)} names, projects and tools that recur across '
+        "your notes. Bigger chip = mentioned in more notes.</p>"
+    )
+    out.append('<div class="v-chips">')
+    mx = max(len(v) for _, v in ordered)
+    for ent, notes in ordered:
+        n = len(notes)
+        w = "lg" if n >= max(3, mx * 0.6) else ("md" if n > 2 else "sm")
+        out.append(f'<a class="v-chip v-{w}" href="#{_slug(ent)}">{_esc(ent)}<i>{n}</i></a>')
+    out.append("</div>")
+
+    for ent, notes in ordered:
+        out.append(f'<h2 id="{_slug(ent)}">{_esc(ent)} <i class="v-count">{len(notes)}</i></h2>')
+        out.append('<ul class="v-list">')
+        for title, stem in notes:
+            out.append(f'<li><a href="./notes/{_esc(stem)}">{_esc(title)}</a></li>')
+        out.append("</ul>")
+    out.append("</div>")
+    dest = Path(notes_dir).parent / "mentions.md"
     dest.write_text("\n".join(out) + "\n")
     return str(dest)
