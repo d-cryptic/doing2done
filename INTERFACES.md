@@ -54,6 +54,28 @@ Then email a thought to that address; the Worker's `email()` handler queues it.
    - `ask what did I decide about X` -> semantic search over your notes
 
 
+### Voice notes
+
+Send a voice note instead of typing — it's transcribed at the edge (Workers AI
+Whisper) and takes the same classify -> route path. The reply echoes what it heard,
+so a mishearing is obvious immediately.
+
+### Reply to fix it
+
+Reply to the bot's confirmation to correct what it did:
+
+| You reply | What happens |
+|---|---|
+| `tomorrow 6pm` / `next monday` | re-dates the task (timed reminder if you give a time) |
+| `list: Work` | moves it to that TickTick list |
+| `not a todo` / `drop it` | deletes the task |
+
+Every correction is logged to the `corrections` table — raw material for new eval cases.
+
+> TickTick's Open API cannot move a task between lists (a cross-project update
+> returns 200 and silently does nothing), so a move is implemented as
+> recreate-in-target + delete-original. The task id changes; `task_map` follows it.
+
 ## 5. WhatsApp via Hermes Agent (own number, no verification, no Twilio)
 
 [Hermes Agent](https://hermes-agent.nousresearch.com/docs/) (Nous Research) runs a
