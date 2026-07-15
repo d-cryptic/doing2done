@@ -8,6 +8,7 @@ export interface Env {
   VECTORIZE: VectorizeIndex;
   ASSETS: R2Bucket;
   INGEST_TOKEN?: string;
+  TELEGRAM_BOT_TOKEN?: string;
 }
 
 const EMBED_MODEL = "@cf/baai/bge-base-en-v1.5";
@@ -589,6 +590,62 @@ async function appPage(env: Env): Promise<string> {
     stats = "";  // never let a stats query break capture — the point of the page
   }
   return APP_PAGE.replace("__RECENT__", recent).replace("__STATS__", stats);
+}
+
+// ── Remote MCP (JSON-RPC over HTTP) ──
+// MCP_TOOLS + mcpHandle were dropped in #31 along with routeCapture; /mcp has
+// been returning 500 ever since. Nothing type-checked the worker, so it shipped.
+const MCP_TOOLS = [
+  {
+    name: "ask_notes",
+    description: "Semantic search over the user's private note vault. Returns the most relevant notes.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "What to look for" } },
+      required: ["query"],
+    },
+  },
+  {
+    name: "capture",
+    description: "Capture a quick thought; it becomes todos + a note on the next sync.",
+    inputSchema: {
+      type: "object",
+      properties: { text: { type: "string", description: "The thought to capture" } },
+      required: ["text"],
+    },
+  },
+];
+
+async function mcpHandle(msg: any, env: Env): Promise<any> {
+  const { id, method, params } = msg ?? {};
+  const ok = (result: unknown) => ({ jsonrpc: "2.0", id, result });
+  if (method === "initialize") {
+    return ok({
+      protocolVersion: "2024-11-05",
+      capabilities: { tools: {} },
+      serverInfo: { name: "doing2done", version: "1.0.0" },
+    });
+  }
+  if (method === "notifications/initialized") return null; // notification: no reply
+  if (method === "tools/list") return ok({ tools: MCP_TOOLS });
+  if (method === "tools/call") {
+    const name = params?.name;
+    const args = params?.arguments ?? {};
+    let text = "";
+    if (name === "ask_notes") {
+      const hits = await semanticAsk(env, String(args.query ?? ""));
+      text = hits.length
+        ? "Relevant notes:\n" + hits.map((h: any) => `- ${h.title} (${h.score})`).join("\n")
+        : "No matching notes.";
+    } else if (name === "capture") {
+      await storeCapture(env, "mcp", String(args.text ?? ""));
+      text = "Captured — it will sync into todos/notes.";
+    } else {
+      return { jsonrpc: "2.0", id, error: { code: -32601, message: `unknown tool: ${name}` } };
+    }
+    return ok({ content: [{ type: "text", text }] });
+  }
+  return { jsonrpc: "2.0", id, error: { code: -32601, message: `unknown method: ${method}` } };
 }
 
 export default {
