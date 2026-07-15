@@ -244,6 +244,20 @@ class State:
                 (note_id, digest),
             )
 
+    def bump_vision_failure(self, note_id: str) -> int:
+        """Count consecutive failed vision reads for a note. Returns the new count."""
+        key = f"vision_fail:{note_id}"
+        n = int(self.get_kv(key) or 0) + 1
+        self.set_kv(key, str(n))
+        return n
+
+    def clear_vision_failure(self, note_id: str) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM meta WHERE key = ?", (f"vision_fail:{note_id}",))
+
+    def vision_failures(self, note_id: str) -> int:
+        return int(self.get_kv(f"vision_fail:{note_id}") or 0)
+
     def get_kv(self, key: str) -> str | None:
         with self._conn() as c:
             row = c.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
