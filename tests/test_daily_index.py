@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from doing2done.reports import generate_daily_index
+from doing2done.reports import generate_daily_index, generate_weekly_index
 
 
 def _daily(tmp_path, day, focus):
@@ -39,8 +39,38 @@ def test_frontmatter_is_stripped(tmp_path):
 def test_no_briefs_yet(tmp_path):
     (tmp_path / "daily").mkdir()
     body = Path(generate_daily_index(str(tmp_path))).read_text()
-    assert "No brief yet" in body
+    assert "No daily brief yet" in body
 
 
 def test_missing_dir_is_a_noop(tmp_path):
     assert generate_daily_index(str(tmp_path)) == ""
+
+
+def test_weekly_index_inlines_the_latest_review(tmp_path):
+    """d2d weekly wrote these all along and nothing ever linked to them."""
+    d = tmp_path / "weekly"
+    d.mkdir()
+    (d / "2026-07-08.md").write_text(
+        "---\ntitle: 'W'\n---\n\n# Weekly — 2026-07-08\n\nold review\n"
+    )
+    (d / "2026-07-15.md").write_text(
+        "---\ntitle: 'W'\n---\n\n# Weekly — 2026-07-15\n\nthis week\n"
+    )
+    body = Path(generate_weekly_index(str(tmp_path))).read_text()
+    assert "this week" in body
+    assert "old review" not in body, "only the latest belongs inline"
+    assert 'href="./2026-07-08"' in body
+
+
+def test_weekly_and_daily_do_not_collide(tmp_path):
+    """They share a generator; each must write into its own directory."""
+    for sub, txt in (("daily", "todays brief"), ("weekly", "the review")):
+        d = tmp_path / sub
+        d.mkdir()
+        (d / "2026-07-15.md").write_text(f"---\ntitle: 'x'\n---\n\n{txt}\n")
+    assert "todays brief" in Path(generate_daily_index(str(tmp_path))).read_text()
+    assert "the review" in Path(generate_weekly_index(str(tmp_path))).read_text()
+
+
+def test_no_weekly_dir_is_a_noop(tmp_path):
+    assert generate_weekly_index(str(tmp_path)) == ""

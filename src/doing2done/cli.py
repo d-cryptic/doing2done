@@ -586,10 +586,11 @@ def tags() -> None:
 @app.command()
 def weekly() -> None:
     """Generate a weekly review digest into the vault."""
-    from .reports import weekly_digest
+    from .reports import generate_weekly_index, weekly_digest
 
     s = get_settings()
     p = weekly_digest(s, state=State(s.state_db))
+    generate_weekly_index(s.vault_notes_dir)  # otherwise nothing links to it
     rprint(f"[green]weekly[/green] -> {p or 'no recent notes'}")
 
 
