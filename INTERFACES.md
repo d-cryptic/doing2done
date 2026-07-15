@@ -152,3 +152,22 @@ only way in. Notes render to HTML **before** upload with raw HTML disabled, so a
 `<script>` in a note can never become live markup on a public page. Vault-relative
 links, assets, and the Related block are stripped: they'd 404 off-site or leak
 other note titles.
+
+## What the 30-minute sync actually does
+
+`scripts/run.sh`, via launchd. Everything after the ingest is local and LLM-free, so
+it's cheap enough to run every time:
+
+1. `health` — canary: Notes readable, provider ok, worker ok, sync recent
+2. `capture` → `ingest --apply` — the pipeline
+3. `daily`, `calendar --apply`, `analytics`, `librarian --apply`, `backup`, `push`
+4. **vault hygiene** — `prune --apply`, `retag --apply`, `relate`, `tags`, `dedup`,
+   `timeline`, `graph`, `home`
+5. deploy + commit the vault, but only if it changed
+
+Step 4 exists because a note's stem contains its title: when the classifier retitles
+a note the file is renamed, which strands the old file and every link pointing at it.
+Archiving 13 such orphans once broke 66 of 275 internal links until `relate` re-ran.
+
+Two scheduled pushes sit alongside it: `digest` (Sundays 18:00) and `surface`
+(Wednesdays 09:00). Both stay silent when there is nothing to say.
