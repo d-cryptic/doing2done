@@ -199,6 +199,9 @@ async function send(){
   try{
     if(M==='ask'){
       const r=await fetch('/app/ask?q='+encodeURIComponent(v));
+      // Without this an error falls through to hits=[] and the page says your notes
+      // don't mention it — telling you something false about your own vault.
+      if(!r.ok) throw new Error('search is down (HTTP '+r.status+')');
       const d=await r.json();
       const hits=d.hits||[];
       if(!hits.length){$('out').innerHTML='<p class="empty">Nothing in your notes touches that — yet.</p>';}
@@ -211,6 +214,8 @@ async function send(){
     }else{
       const r=await fetch('/app/capture',{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({text:v})});
+      // Saying "Captured" for a failed POST loses the thought silently.
+      if(!r.ok) throw new Error("couldn't save that (HTTP "+r.status+")");
       const d=await r.json();
       const todos=d.todos||[];
       $('out').innerHTML='<div class="done"><span>✎</span><div><strong>'+
@@ -220,7 +225,13 @@ async function send(){
         '</div></div>';
       $('q').value='';
     }
-  }catch(e){ $('out').innerHTML='<p class="err">failed — '+esc(String(e))+'</p>'; }
+  }catch(e){
+    const off = !navigator.onLine || /Failed to fetch|NetworkError/i.test(String(e));
+    $('out').innerHTML='<p class="err">'+esc(off
+      ? (M==='ask' ? "You're offline — can't reach your notes."
+                   : "You're offline. Your text is still here; send it when you're back.")
+      : String(e && e.message ? e.message : e))+'</p>';
+  }
   $('go').disabled=false;
 }
 </script></body></html>`;
