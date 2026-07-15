@@ -501,6 +501,7 @@ def generate_home(settings: Settings, state=None, svc=None) -> str:
     for label, href, blurb in (
         ("All notes", "./notes/", "every parsed note, full-text"),
         ("Daily", "./notes/daily/", "rolled-over tasks + today"),
+        ("Weekly", "./notes/weekly/", "the week, reviewed"),
         ("Timeline", "./timeline", "by date, 2021 onward"),
         ("Tags", "./tags", "browse by topic"),
         ("Graph", "./graph", "how notes connect"),
@@ -558,29 +559,29 @@ def linkify_titles(markdown: str, notes_dir: str) -> str:
     return re.sub(rf'(["\u201c\u201d])({pattern})\1', repl, markdown, flags=re.I)
 
 
-def generate_daily_index(notes_dir: str) -> str:
-    """Today's brief, inline -> docs/notes/daily/index.md.
+def generate_period_index(notes_dir: str, sub: str, label: str) -> str:
+    """Latest brief inline, earlier ones listed -> docs/notes/<sub>/index.md.
 
-    The landing page was a hand-written stub that described the feature
-    ("rolled-over tasks + today's focus") and showed none of it, while the actual
-    briefs hid in the sidebar. Tapping Daily should answer "what am I doing today",
-    not explain what Daily is.
+    Both landing pages were stubs that described the feature and showed none of it,
+    while the briefs hid in the sidebar. Tapping Daily should answer "what am I doing
+    today"; tapping Weekly should show the review, not explain what a review is.
     """
-    d = Path(notes_dir) / "daily"
+    d = Path(notes_dir) / sub
     if not d.exists():
         return ""
-    days = sorted(
-        (f for f in d.glob("*.md") if f.name != "index.md"), reverse=True
-    )
+    days = sorted((f for f in d.glob("*.md") if f.name != "index.md"), reverse=True)
     out = [
         '<div class="v-page">',
-        '<p class="v-eyebrow">vault \u00b7 daily</p>',
+        f'<p class="v-eyebrow">vault \u00b7 {label.lower()}</p>',
         "</div>",
         "",
     ]
     if not days:
-        out.append("# Daily notes\n")
-        out.append('<p class="v-empty">No brief yet — the sync writes one each morning.</p>')
+        out.append(f"# {label}\n")
+        out.append(
+            f'<p class="v-empty">No {label.lower()} brief yet \u2014 the scheduler '
+            "writes one automatically.</p>"
+        )
     else:
         latest = days[0]
         body = re.sub(r"^---\n.*?\n---\n", "", latest.read_text(), flags=re.S).strip()
@@ -594,6 +595,21 @@ def generate_daily_index(notes_dir: str) -> str:
     dest = d / "index.md"
     dest.write_text("\n".join(out) + "\n")
     return str(dest)
+
+
+def generate_daily_index(notes_dir: str) -> str:
+    """Today's brief, inline."""
+    return generate_period_index(notes_dir, "daily", "Daily")
+
+
+def generate_weekly_index(notes_dir: str) -> str:
+    """The latest weekly review, inline.
+
+    d2d weekly has been writing these all along and nothing linked to them — not the
+    nav, sidebar, notes index or front page. It built into the site and was
+    unreachable, and I then scheduled it to cost a model call every Sunday.
+    """
+    return generate_period_index(notes_dir, "weekly", "Weekly")
 
 
 def generate_notes_index(notes_dir: str) -> str:
