@@ -114,3 +114,26 @@ def find_orphans(notes_dir: str, live_paths: set[str], known_ids: list[str]) -> 
         if m and m.group(1) in hashes:
             out.append(str(f))
     return sorted(out)
+
+
+def canonical_tag(tag: str) -> str:
+    """One spelling per tag: lowercase, separators collapsed to '-'.
+
+    Merges only what is mechanically the same word — "open source", "open_source"
+    and "Open-Source" all become "open-source". It deliberately does NOT merge
+    synonyms ("webdev" vs "web-development"): that's a judgement call, and guessing
+    wrong silently rewrites the user's own vocabulary.
+    """
+    s = re.sub(r"[\s_]+", "-", str(tag).strip().lower())
+    s = re.sub(r"-{2,}", "-", s)
+    return s.strip("-")
+
+
+def canonical_tags(tags: list[str]) -> list[str]:
+    """Canonicalise and de-duplicate, preserving first-seen order."""
+    out: list[str] = []
+    for t in tags or []:
+        c = canonical_tag(t)
+        if c and c not in out:
+            out.append(c)
+    return out

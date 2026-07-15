@@ -29,6 +29,7 @@ uv run d2d librarian --apply || true   # garden weak metadata (no-op when tidy)
 # A retitle changes a note's stem, which strands the old file and every link
 # pointing at it; prune archives the strays and relate rewrites the links.
 uv run d2d prune --apply || true
+uv run d2d retag --apply || true
 uv run d2d relate || true
 uv run d2d tags || true
 uv run d2d dedup || true

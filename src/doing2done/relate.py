@@ -105,15 +105,21 @@ def relate_vault(notes_dir: str, top_k: int = 5, threshold: float = 0.06) -> int
     return updated
 
 
-def find_duplicates(notes_dir: str, threshold: float = 0.72) -> list[tuple[str, str, float]]:
-    """Return (title_a, title_b, similarity) pairs of near-duplicate notes."""
+def find_duplicates(notes_dir: str, threshold: float = 0.72) -> list[tuple[dict, dict, float]]:
+    """Return ({title, stem}, {title, stem}, similarity) pairs of near-duplicate notes.
+
+    Carries the stem so the report can link to the notes — a duplicate you can't click
+    through to is a duplicate you won't act on.
+    """
     nd = Path(notes_dir)
     files = [f for f in nd.glob("*.md") if f.name != "index.md"]
     docs = []
     for f in files:
         fm, body = _frontmatter(f.read_text())
         text = f"{fm.get('title', '')} {body}"
-        docs.append({"title": fm.get("title", f.stem), "tf": Counter(_tokens(text))})
+        docs.append({
+            "title": fm.get("title", f.stem), "stem": f.stem, "tf": Counter(_tokens(text)),
+        })
     if len(docs) < 2:
         return []
     df: Counter = Counter()
@@ -137,7 +143,11 @@ def find_duplicates(notes_dir: str, threshold: float = 0.72) -> list[tuple[str, 
             dot = sum(w * big.get(t, 0.0) for t, w in small.items())
             sim = dot / (ni * nj)
             if sim >= threshold:
-                out.append((docs[i]["title"], docs[j]["title"], round(sim, 3)))
+                out.append((
+                    {"title": docs[i]["title"], "stem": docs[i]["stem"]},
+                    {"title": docs[j]["title"], "stem": docs[j]["stem"]},
+                    round(sim, 3),
+                ))
     return sorted(out, key=lambda x: -x[2])
 
 

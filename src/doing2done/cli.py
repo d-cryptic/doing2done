@@ -657,6 +657,47 @@ def unshare(
 
 
 @app.command()
+def retag(
+    apply: bool = typer.Option(False, help="Rewrite the notes (default: dry run)."),
+) -> None:
+    """Give every tag one spelling (open_source / Open Source -> open-source)."""
+    import re as _re
+
+    from .vault import canonical_tags
+
+    s = get_settings()
+    changed = 0
+    merges: dict[str, set] = {}
+    for md in sorted(Path(s.vault_notes_dir).glob("*.md")):
+        if md.name == "index.md":
+            continue
+        txt = md.read_text()
+        m = _re.search(r'^tags: \[(.*?)\]\s*$', txt, _re.M)
+        if not m:
+            continue
+        old = [x.strip().strip('"\'') for x in m.group(1).split(",") if x.strip()]
+        new = canonical_tags(old)
+        if new == old:
+            continue
+        for o, n in zip(old, canonical_tags(old), strict=False):
+            if o != n:
+                merges.setdefault(n, set()).add(o)
+        changed += 1
+        if apply:
+            rendered = "[" + ", ".join(f'"{t}"' for t in new) + "]"
+            md.write_text(txt[: m.start()] + f"tags: {rendered}" + txt[m.end():])
+    for canon, olds in sorted(merges.items()):
+        rprint(f"  {', '.join(sorted(olds))} -> [green]{canon}[/green]")
+    if not changed:
+        rprint("[green]tags already consistent[/green]")
+        return
+    rprint(
+        f"[green]{changed} note(s)[/green]"
+        + ("" if apply else " — re-run with --apply")
+    )
+
+
+@app.command()
 def prune(
     apply: bool = typer.Option(False, help="Actually archive (default: dry run)."),
 ) -> None:
