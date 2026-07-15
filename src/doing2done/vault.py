@@ -55,6 +55,31 @@ def note_stem(
     return base
 
 
+def render_tag_chips(tags: list[str]) -> str:
+    """Tags as links back to the tag index.
+
+    Frontmatter tags are metadata VitePress never renders, so a note showed no topics
+    at all and there was no way to walk from a note to its neighbours by tag.
+    """
+    if not tags:
+        return ""
+    chips = "".join(
+        f'<a class="v-chip v-md" href="../tags#{_tag_slug(t)}">{_esc_html(t)}</a>'
+        for t in tags
+    )
+    return f'\n\n<div class="v-note-tags">{chips}</div>\n'
+
+
+def _tag_slug(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-") or "tag"
+
+
+def _esc_html(s: str) -> str:
+    return (
+        str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    )
+
+
 def write_note(
     result: NoteResult,
     notes_dir: str,
@@ -73,7 +98,9 @@ def write_note(
     if result.links:
         parts.append("\n## Links\n" + "\n".join(f"- <{u}>" for u in result.links))
     body = "\n\n".join(p for p in parts if p) + extra_markdown
-    path.write_text(fm + sanitize_body(body).strip() + "\n")
+    path.write_text(
+        fm + sanitize_body(body).strip() + render_tag_chips(result.tags) + "\n"
+    )
     return str(path)
 
 
