@@ -110,6 +110,8 @@ uv run d2d backup / restore                               # state DB -> R2 (dedu
 uv run d2d cost [--days N]                                # what it actually costs
 uv run d2d calendar [--apply]                            # mirror due dates -> Apple Calendar
 uv run d2d telegram-setup <token>                        # wire a Telegram bot
+uv run d2d digest [--send]                               # weekly review (Sun 18:00 via launchd)
+uv run d2d surface [--send]                              # stale-work nudge (Wed 09:00 via launchd)
 ```
 
 ## Eval harness

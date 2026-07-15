@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.doing2done.surface</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/scripts/run-push.sh</string>
+    <string>surface</string>
+  </array>
+  <!-- Wednesday 09:00 — a midweek nudge about what is going quiet. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>3</integer>
+    <key>Hour</key><integer>9</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>__REPO__/data/push.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/data/push.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
