@@ -51,7 +51,7 @@ Then email a thought to that address; the Worker's `email()` handler queues it.
    (sets the Worker secret + registers the webhook)
 3. Message your bot:
    - any thought -> classified + routed to TickTick **instantly** (edge)
-   - `ask what did I decide about X` -> semantic search over your notes
+   - `ask what did I decide about X` -> a grounded answer synthesised from your notes, with the source notes cited
 
 
 ### Voice notes
