@@ -170,4 +170,12 @@ a note the file is renamed, which strands the old file and every link pointing a
 Archiving 13 such orphans once broke 66 of 275 internal links until `relate` re-ran.
 
 Two scheduled pushes sit alongside it: `digest` (Sundays 18:00) and `surface`
-(Wednesdays 09:00). Both stay silent when there is nothing to say.
+(Wednesdays 09:00). Both stay silent when there is nothing to say. The Sunday job
+also refreshes the LLM-written pages — `insights` and `weekly` — and redeploys:
+they cost a model call each, so they don't belong in a job that runs every 30
+minutes.
+
+`push` reconciles deletions: notes gone from Apple Notes are dropped from D1 and
+Vectorize. Nothing did that before, so a deleted note stayed searchable in `/ask`,
+the bot and MCP indefinitely. An empty live-id list is refused, so a failed read
+can't wipe the index.
