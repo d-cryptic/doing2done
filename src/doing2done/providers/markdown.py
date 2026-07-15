@@ -8,6 +8,24 @@ from pathlib import Path
 from .base import Project, Task, TaskDraft
 
 _LINE = re.compile(r"^- \[( |x)\] (.*?)\s*<!--d2d:([0-9a-f]+)-->\s*$")
+# The rendered due suffix. It's presentation, not part of the title — reading it back
+# into Task.title leaks "(due ...)" into the daily brief and any title comparison.
+_DUE = re.compile(r"\s*\(due (\d{4}-\d{2}-\d{2})\)\s*$")
+
+
+def _split_due(rendered: str) -> tuple[str, str]:
+    """'buy milk  (due 2026-07-20)' -> ('buy milk', '2026-07-20')"""
+    m = _DUE.search(rendered)
+    if not m:
+        return rendered.strip(), ""
+    return _DUE.sub("", rendered).strip(), m.group(1)  # capture, not index maths
+
+
+def _render(title: str, due: str) -> str:
+    line = f"- [ ] {title}"
+    if due:
+        line += f"  (due {due.split('T')[0]})"
+    return line
 
 
 class MarkdownProvider:
@@ -35,17 +53,15 @@ class MarkdownProvider:
                 continue
             m = _LINE.match(line)
             if m and m.group(1) == " " and cur == project_id:
-                out.append(Task(id=m.group(3), title=m.group(2), project_id=cur))
+                title, due = _split_due(m.group(2))
+                out.append(Task(id=m.group(3), title=title, project_id=cur, due_date=due or None))
         return out
 
     def create_task(self, draft: TaskDraft) -> Task:
         tid = uuid.uuid4().hex[:12]
         section = draft.project_id or "Inbox"
         text = self._read()
-        entry = f"- [ ] {draft.title}"
-        if draft.due_date:
-            entry += f"  (due {draft.due_date.split('T')[0]})"
-        entry += f"  <!--d2d:{tid}-->"
+        entry = _render(draft.title, draft.due_date or "") + f"  <!--d2d:{tid}-->"
         if f"## {section}" not in text:
             text += f"\n## {section}\n"
         lines = text.splitlines()
@@ -62,7 +78,10 @@ class MarkdownProvider:
         for i, ln in enumerate(lines):
             m = _LINE.match(ln)
             if m and m.group(3) == task_id:
-                lines[i] = f"- [ ] {draft.title} <!--d2d:{task_id}-->"
+                # Rebuilding from the title alone silently dropped the due date.
+                _, existing_due = _split_due(m.group(2))
+                due = draft.due_date or existing_due
+                lines[i] = _render(draft.title, due) + f"  <!--d2d:{task_id}-->"
         self.path.write_text("\n".join(lines) + "\n")
 
     def complete_task(self, project_id: str | None, task_id: str) -> None:
