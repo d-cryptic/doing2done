@@ -457,6 +457,76 @@ async function telegramFile(env: Env, fileId: string): Promise<ArrayBuffer | nul
 }
 
 
+/** Escape for HTML text/attribute context. Worker-side; the `esc` inside APP_PAGE
+ *  is browser JS and not in scope here. */
+function escHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string
+  );
+}
+
+const SHARE_CSS = `
+:root{--ink:#0b0a09;--ink2:#131110;--line:#26231e;--vellum:#ece5d6;--muted:#8d857a;
+  --faint:#5b554c;--amber:#d99a3c;
+  --serif:ui-serif,"New York","Iowan Old Style",Palatino,Georgia,serif;
+  --round:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ink);color:var(--vellum);font-family:var(--round);
+  line-height:1.65;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+main{position:relative;z-index:1;max-width:44rem;margin:0 auto;padding:clamp(2rem,6vw,4.5rem) 1.5rem 6rem}
+h1{font-family:var(--serif);font-weight:500;font-size:clamp(1.9rem,5vw,2.6rem);
+  letter-spacing:-.02em;line-height:1.15;margin:0 0 .4rem}
+h2,h3{font-family:var(--serif);font-weight:500;letter-spacing:-.01em;margin:2.4rem 0 .6rem}
+.eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--amber);margin:0 0 1.2rem}
+hr{border:0;border-top:1px solid var(--line);margin:2.5rem 0}
+a{color:var(--amber);text-underline-offset:3px}
+blockquote{margin:1.5rem 0;padding:.2rem 0 .2rem 1.1rem;border-left:2px solid var(--amber);
+  color:var(--muted);font-style:italic}
+code{font-family:var(--mono);font-size:.87em;background:var(--ink2);border:1px solid var(--line);
+  border-radius:5px;padding:.1em .35em}
+pre{background:var(--ink2);border:1px solid var(--line);border-radius:10px;padding:1rem;
+  overflow-x:auto}
+pre code{background:none;border:0;padding:0}
+img{max-width:100%;height:auto;border-radius:10px;border:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto}
+th,td{border-bottom:1px solid var(--line);padding:.6rem;text-align:left}
+ul,ol{padding-left:1.3rem}
+li{margin:.3rem 0}
+footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:.72rem;color:var(--faint)}
+`;
+
+function sharePage(title: string, html: string): string {
+  return `<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0a09">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<title>${escHtml(title)}</title>
+<style>${SHARE_CSS}</style>
+</head><body><main>
+<p class="eyebrow">shared note</p>
+<h1>${escHtml(title)}</h1>
+<hr>
+${html}
+<footer>Shared privately via doing2done. This link can be revoked at any time.</footer>
+</main></body></html>`;
+}
+
+const SHARE_GONE = `<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Link expired</title>
+<style>${SHARE_CSS}</style></head><body><main>
+<p class="eyebrow">doing2done</p>
+<h1>This link isn't live</h1>
+<p style="color:var(--muted)">It was revoked, or it expired. Ask whoever sent it for a fresh one.</p>
+</main></body></html>`;
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
    try {
@@ -574,6 +644,62 @@ export default {
     }
 
     // ── Telegram bot (webhook) — capture + ask from your phone, on your own number ──
+
+
+    // ── Sharing: one note, one unguessable link, revocable ──
+
+    // Public read. Nothing here is listed or discoverable; you need the token.
+    if (p.startsWith("/s/")) {
+      const token = p.slice(3);
+      const row: any = await env.DB.prepare(
+        "SELECT title, html, expires_at, revoked FROM shares WHERE token = ?"
+      ).bind(token).first();
+      const gone = !row || row.revoked
+        || (row.expires_at && row.expires_at < new Date().toISOString());
+      if (gone) {
+        return new Response(SHARE_GONE, {
+          status: 404,
+          headers: { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" },
+        });
+      }
+      await env.DB.prepare("UPDATE shares SET views = views + 1 WHERE token = ?").bind(token).run();
+      return new Response(sharePage(row.title, row.html), {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          // A shared link is for a person you sent it to, not for crawlers.
+          "x-robots-tag": "noindex, nofollow, noarchive",
+          "cache-control": "no-store",
+        },
+      });
+    }
+
+    if (p === "/share" && req.method === "POST") {
+      if (!bearerOk(req, env)) return json({ error: "unauthorized" }, 401);
+      const b: any = await req.json();
+      if (!b?.token || !b?.title || !b?.html) return json({ error: "token, title, html required" }, 400);
+      await env.DB.prepare(
+        "INSERT OR REPLACE INTO shares(token,note_id,title,html,expires_at) VALUES (?,?,?,?,?)"
+      ).bind(b.token, b.note_id ?? null, b.title, b.html, b.expires_at ?? null).run();
+      return json({ url: `${url.origin}/s/${b.token}`, expires_at: b.expires_at ?? null });
+    }
+
+    if (p === "/shares" && req.method === "GET") {
+      if (!bearerOk(req, env)) return json({ error: "unauthorized" }, 401);
+      const rows = await env.DB.prepare(
+        "SELECT token, title, created_at, expires_at, revoked, views FROM shares ORDER BY created_at DESC"
+      ).all();
+      return json({ shares: rows.results ?? [] });
+    }
+
+    if (p === "/unshare" && req.method === "POST") {
+      if (!bearerOk(req, env)) return json({ error: "unauthorized" }, 401);
+      const b: any = await req.json();
+      const all = b?.all === true;
+      const r = all
+        ? await env.DB.prepare("UPDATE shares SET revoked = 1 WHERE revoked = 0").run()
+        : await env.DB.prepare("UPDATE shares SET revoked = 1 WHERE token = ?").bind(b?.token ?? "").run();
+      return json({ revoked: r.meta?.changes ?? 0 });
+    }
 
     // Audio bytes -> text. Bearer-gated; `?capture=1` also files it as a capture.
     if (p === "/transcribe" && req.method === "POST") {
