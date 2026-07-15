@@ -202,9 +202,12 @@ def generate_insights(settings: Settings) -> str:
         "recurring themes, what's in progress, stale ideas worth revisiting, and any patterns. "
         'Return JSON {"markdown": string}.\n\n' + "\n".join(items[:200])
     )
-    body = _llm_markdown(prompt, settings)
+    body = linkify_titles(_llm_markdown(prompt, settings), str(nd))
     dest = nd.parent / "insights.md"
-    dest.write_text(f"# Insights\n\n{body}\n")
+    dest.write_text(
+        '<div class="v-page">\n<p class="v-eyebrow">vault \u00b7 insights</p>\n'
+        "<h1>Insights</h1>\n</div>\n\n" + body + "\n"
+    )
     return str(dest)
 
 
@@ -519,3 +522,37 @@ def generate_home(settings: Settings, state=None, svc=None) -> str:
 def _summary_of(raw: str) -> str:
     m = re.search(r"^> \*\*TL;DR\*\*\s*(.+)$", raw, re.M)
     return m.group(1).strip() if m else ""
+
+
+def linkify_titles(markdown: str, notes_dir: str) -> str:
+    """Turn note titles the LLM quoted into links to those notes.
+
+    The report names real notes as evidence but writes prose, so every reference was
+    a dead end — you could read that "Hackathon Tracker" matters and have no way to
+    open it. Only exact title matches are linked; a near-miss stays plain text rather
+    than sending you to the wrong note.
+    """
+    titles: dict[str, str] = {}
+    for md in Path(notes_dir).glob("*.md"):
+        if md.name == "index.md":
+            continue
+        fm = _frontmatter(md.read_text())
+        title = (fm.get("title") or "").strip()
+        if title:
+            titles.setdefault(title.lower(), md.stem)
+    if not titles:
+        return markdown
+
+    # Longest first is belt-and-braces: the closing quote in the pattern below already
+    # forces the whole title to match, so "Hackathon" can't shadow "Hackathon
+    # Brainstorm and Learning Plan" even unsorted. Kept because it costs nothing and
+    # stops being true the moment the quote anchor is relaxed.
+    pattern = "|".join(re.escape(t) for t in sorted(titles, key=len, reverse=True))
+
+    def repl(m: re.Match) -> str:
+        quote, title = m.group(1), m.group(2)
+        stem = titles.get(title.lower())
+        return f'{quote}[{title}](./notes/{stem}){quote}' if stem else m.group(0)
+
+    # only inside the quotes the model already uses to cite a note
+    return re.sub(rf'(["\u201c\u201d])({pattern})\1', repl, markdown, flags=re.I)
