@@ -90,3 +90,27 @@ def archive_note(md_path: str, vault_dir: str, notes_dir: str) -> None:
         if dest.exists():
             shutil.rmtree(dest)
         shutil.move(str(assets), str(dest))
+
+
+def find_orphans(notes_dir: str, live_paths: set[str], known_ids: list[str]) -> list[str]:
+    """Vault files left behind by a re-titled note.
+
+    A note's stem ends in sha1(note_id)[:6]. When the classifier retitles a note the
+    stem changes, and the old file is only unlinked if state happened to know the
+    previous path — which it doesn't when the note was last seen as todo-only, or
+    when a run died between write and mark. Those leftovers then pollute relate,
+    duplicates, and the digest.
+
+    An orphan is a file whose hash belongs to a known note but which is no longer any
+    note's current file. Never returns a live path, so a 6-hex collision between two
+    different notes can't cause a wrongful delete.
+    """
+    hashes = {hashlib.sha1(nid.encode()).hexdigest()[:6] for nid in known_ids}
+    out = []
+    for f in Path(notes_dir).glob("*.md"):
+        if f.name == "index.md" or str(f) in live_paths:
+            continue
+        m = re.search(r"-([0-9a-f]{6})$", f.stem)
+        if m and m.group(1) in hashes:
+            out.append(str(f))
+    return sorted(out)

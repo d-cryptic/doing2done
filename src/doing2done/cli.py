@@ -1,6 +1,8 @@
 """doing2done command line — run `d2d --help`."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import typer
 from rich import print as rprint
@@ -570,6 +572,36 @@ def weekly() -> None:
     s = get_settings()
     p = weekly_digest(s, state=State(s.state_db))
     rprint(f"[green]weekly[/green] -> {p or 'no recent notes'}")
+
+
+@app.command()
+def prune(
+    apply: bool = typer.Option(False, help="Actually archive (default: dry run)."),
+) -> None:
+    """Archive vault files orphaned by a re-titled note.
+
+    Archives rather than deletes: an orphan is inferred from state, and state can be
+    wrong (a note id whose file no longer matches its content). <vault>/archive/ keeps
+    them out of the published site while staying recoverable.
+    """
+    from .vault import archive_note, find_orphans
+
+    s = get_settings()
+    state = State(s.state_db)
+    rows = state.all_seen_notes()
+    live = {r["md_path"] for r in rows if r["md_path"]}
+    orphans = find_orphans(s.vault_notes_dir, live, [r["note_id"] for r in rows])
+    if not orphans:
+        rprint("[green]no orphans[/green]")
+        return
+    for o in orphans:
+        rprint(f"  {'archived' if apply else 'would archive'} {Path(o).name}")
+        if apply:
+            archive_note(o, s.vault_dir, s.vault_notes_dir)
+    rprint(
+        f"[green]{len(orphans)} orphan(s)[/green]"
+        + ("" if apply else " — re-run with --apply to move them to <vault>/archive/")
+    )
 
 
 @app.command()
