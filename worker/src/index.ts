@@ -121,6 +121,25 @@ textarea:focus{border-color:#3d382f;box-shadow:0 0 0 4px rgba(217,154,60,.07)}
 .err{font-family:var(--mono);font-size:12px;color:var(--rose)}
 @keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.ex{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:1.4rem 0 0}
+.ex span{font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);margin-right:.2rem}
+.ex button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;
+  padding:.3rem .65rem;font:inherit;font-size:.78rem;cursor:pointer;
+  transition:border-color .15s,color .15s}
+.ex button:hover{border-color:var(--amber);color:var(--amber)}
+.recent{margin:2.6rem 0 0}
+.recent h2{font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);font-weight:400;margin:0 0 .7rem}
+.rc{display:block;padding:.75rem 0;border-bottom:1px solid var(--line)}
+.rc:last-child{border-bottom:0}
+.rc b{display:block;font-weight:400;font-size:.92rem;color:var(--vellum);line-height:1.45}
+.rc i{font-style:normal;display:block;margin:.3rem 0 .25rem;font-size:.8rem;color:var(--sage)}
+.rc time{font-family:var(--mono);font-size:.62rem;color:var(--faint)}
+.foot{margin:2.4rem 0 0;padding:1rem 0 0;border-top:1px solid var(--line);text-align:center;
+  font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint)}
 </style></head><body>
 <div class="wrap">
   <header>
@@ -138,12 +157,23 @@ textarea:focus{border-color:#3d382f;box-shadow:0 0 0 4px rgba(217,154,60,.07)}
       <textarea id="q" placeholder="what did I decide about…" autofocus></textarea>
     </div>
     <button class="send" id="go" onclick="send()">Ask my notes</button>
-    <p class="hint" id="hint">⌘/ctrl + enter to send · searches meaning, not keywords</p>
+    <p class="hint" id="hint">⌘+enter · searches meaning, not keywords</p>
   </div>
 
   <div id="out"></div>
+
+  <div class="ex" id="ex">
+    <span>try</span>
+    <button onclick="fill(this)">what did I decide about kubernetes</button>
+    <button onclick="fill(this)">notes about the hackathon</button>
+    <button onclick="fill(this)">what am I putting off</button>
+  </div>
+
+  <section class="recent">__RECENT__</section>
+  <footer class="foot">__STATS__</footer>
 </div>
 <script>
+function fill(b){ const q=document.getElementById('q'); q.value=b.textContent; q.focus(); }
 let M='ask';
 const $=(i)=>document.getElementById(i);
 function mode(m){
@@ -153,9 +183,11 @@ function mode(m){
   $('go').textContent = m==='ask'?'Ask my notes':'Capture it';
   $('q').placeholder = m==='ask'?'what did I decide about…':'a thought, a todo, anything…';
   $('hint').textContent = m==='ask'
-    ? '⌘/ctrl + enter to send · searches meaning, not keywords'
-    : '⌘/ctrl + enter to send · todos land in your list within seconds';
-  $('out').innerHTML=''; $('q').focus();
+    ? '⌘+enter · searches meaning, not keywords'
+    : '⌘+enter · lands in your list within seconds';
+  $('out').innerHTML='';
+  document.getElementById('ex').style.display = m==='ask' ? '' : 'none';
+  $('q').focus();
 }
 $('q').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')send();});
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
@@ -508,7 +540,8 @@ function sharePage(title: string, html: string): string {
 <meta name="robots" content="noindex,nofollow,noarchive">
 <meta name="referrer" content="no-referrer">
 <title>${escHtml(title)}</title>
-<style>${SHARE_CSS}</style>
+<style>${SHARE_CSS}
+</style>
 </head><body><main>
 <p class="eyebrow">shared note</p>
 <h1>${escHtml(title)}</h1>
@@ -526,6 +559,37 @@ const SHARE_GONE = `<!doctype html><html lang="en"><head>
 <h1>This link isn't live</h1>
 <p style="color:var(--muted)">It was revoked, or it expired. Ask whoever sent it for a fresh one.</p>
 </main></body></html>`;
+
+/** Fill the app shell with what's actually in the vault right now.
+ *  Rendered server-side: the page proves your captures landed instead of
+ *  showing a form floating on a void, and it needs no extra round-trip. */
+async function appPage(env: Env): Promise<string> {
+  let recent = "";
+  let stats = "";
+  try {
+    const caps = await env.DB.prepare(
+      "SELECT text, reply, created FROM captures ORDER BY created DESC LIMIT 5"
+    ).all();
+    const rows = (caps.results ?? []) as any[];
+    if (rows.length) {
+      recent =
+        "<h2>recently captured</h2>" +
+        rows.map((r) => {
+          const when = String(r.created ?? "").slice(5, 16).replace("T", " ");
+          const became = r.reply
+            ? `<i>→ ${escHtml(String(r.reply).split("; ").join(" · "))}</i>`
+            : "<i>→ becomes a note on the next sync</i>";
+          return `<div class="rc"><b>${escHtml(r.text ?? "")}</b>${became}` +
+                 `<time>${escHtml(when)}</time></div>`;
+        }).join("");
+    }
+    const n: any = await env.DB.prepare("SELECT COUNT(*) n FROM notes").first();
+    stats = `${n?.n ?? 0} notes searchable`;
+  } catch {
+    stats = "";  // never let a stats query break capture — the point of the page
+  }
+  return APP_PAGE.replace("__RECENT__", recent).replace("__STATS__", stats);
+}
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -628,7 +692,9 @@ export default {
     // ── Gated web app (Cloudflare Access) ──
     if (p === "/app") {
       if (!accessOk(req)) return new Response("Access required", { status: 403 });
-      return new Response(APP_PAGE, { headers: { "content-type": "text/html" } });
+      return new Response(await appPage(env), {
+        headers: { "content-type": "text/html", "cache-control": "no-store" },
+      });
     }
     if (p === "/app/ask") {
       if (!accessOk(req)) return json({ error: "forbidden" }, 403);
