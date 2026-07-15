@@ -451,7 +451,25 @@ def push(
             continue  # unchanged since last push — skip re-embedding
         pending.append((item, digest))
 
+    live_ids = [n.id for n in store.list_notes()]
+
+    def _reconcile() -> None:
+        """Drop notes deleted in Apple Notes from D1 + Vectorize."""
+        if not live_ids:
+            return  # never let an empty read wipe the index
+        try:
+            rr = httpx.post(
+                f"{s.worker_url}/reconcile", json={"live_ids": live_ids},
+                headers={"Authorization": f"Bearer {s.ingest_token}"}, timeout=60,
+            )
+            n = rr.json().get("purged", 0)
+            if n:
+                rprint(f"[green]purged[/green] {n} deleted note(s) from the search index")
+        except Exception as e:
+            rprint(f"[yellow]reconcile skipped:[/yellow] {type(e).__name__}")
+
     if not pending:
+        _reconcile()  # nothing new to embed, but deletions still need purging
         rprint("[green]push[/green] -> up to date (0 changed)")
         return
 
@@ -466,6 +484,7 @@ def push(
         embedded += r.json().get("embedded", 0)
         for payload, digest in chunk:  # only record after a successful push
             state.set_pushed_hash(payload["note_id"], digest)
+    _reconcile()  # a push that adds notes must also drop the ones you deleted
     rprint(f"[green]pushed[/green] -> {len(pending)} changed, {embedded} embedded")
 
 

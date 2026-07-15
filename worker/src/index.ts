@@ -698,6 +698,36 @@ export default {
     }
 
     // ── Mac thin-agent: bulk note push (existing) ──
+
+    // Delete notes that no longer exist in Apple Notes. Nothing else purges the
+    // index: a note you deleted stayed searchable in /ask, the bot and MCP forever.
+    if (p === "/reconcile" && req.method === "POST") {
+      if (!bearerOk(req, env)) return json({ error: "unauthorized" }, 401);
+      const b: any = await req.json();
+      const live: string[] = Array.isArray(b?.live_ids) ? b.live_ids : [];
+      // An empty list would mean "delete everything". A caller that failed to read
+      // Apple Notes must not be able to wipe the index by accident.
+      if (!live.length) return json({ error: "live_ids required and non-empty" }, 400);
+
+      const rows = await env.DB.prepare("SELECT note_id FROM notes").all();
+      const liveSet = new Set(live);
+      const gone = (rows.results ?? [])
+        .map((r: any) => r.note_id as string)
+        .filter((id) => !liveSet.has(id));
+      if (!gone.length) return json({ purged: 0 });
+
+      for (const id of gone) {
+        await env.DB.prepare("DELETE FROM notes WHERE note_id = ?").bind(id).run();
+      }
+      try {
+        await env.VECTORIZE.deleteByIds(gone.map((id) => id.slice(0, 64)));
+      } catch (e: any) {
+        // D1 is already clean; report honestly rather than claiming a full purge.
+        return json({ purged: gone.length, vectors: "failed", detail: String(e?.message || e) }, 207);
+      }
+      return json({ purged: gone.length, titles: gone.length });
+    }
+
     if (p === "/ingest" && req.method === "POST") {
       if (!bearerOk(req, env)) return json({ error: "unauthorized" }, 401);
       const notes = (await req.json()) as Array<{ note_id: string; title: string; body: string; modified: string }>;
