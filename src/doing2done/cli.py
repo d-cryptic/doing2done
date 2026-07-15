@@ -575,6 +575,88 @@ def weekly() -> None:
 
 
 @app.command()
+def share(
+    query: str = typer.Argument(..., help="Note stem, or part of its title."),
+    days: int = typer.Option(30, help="Link lifetime in days (0 = no expiry)."),
+) -> None:
+    """Publish ONE note behind an unguessable, revocable link."""
+    from .share import find_note, prepare
+
+    s = get_settings()
+    path = find_note(s.vault_notes_dir, query)
+    if not path:
+        rprint(f"[red]no note matching[/red] {query!r}")
+        raise typer.Exit(1)
+    payload = prepare(s, path, days=days)
+    r = httpx.post(
+        f"{s.worker_url}/share",
+        json=payload,
+        headers={"Authorization": f"Bearer {s.ingest_token}"},
+        timeout=30,
+    )
+    if r.status_code != 200:
+        rprint(f"[red]share failed[/red] {r.status_code} {r.text[:120]}")
+        raise typer.Exit(1)
+    out = r.json()
+    rprint(f"[green]shared[/green] {payload['title']}")
+    rprint(f"  {out['url']}")
+    rprint(f"  expires: {out['expires_at'] or 'never'}")
+    rprint(f"  revoke:  d2d unshare {payload['token'][:12]}")
+
+
+@app.command()
+def shares() -> None:
+    """List every share link and its state."""
+    s = get_settings()
+    r = httpx.get(
+        f"{s.worker_url}/shares",
+        headers={"Authorization": f"Bearer {s.ingest_token}"},
+        timeout=30,
+    )
+    rows = r.json().get("shares", [])
+    if not rows:
+        rprint("[yellow]nothing shared[/yellow]")
+        return
+    for row in rows:
+        if row["revoked"]:
+            state, colour = "revoked", "red"
+        elif row["expires_at"]:
+            state, colour = f"expires {row['expires_at'][:10]}", "green"
+        else:
+            state, colour = "no expiry", "green"
+        rprint(
+            f"[{colour}]{row['token'][:12]}[/{colour}]  {row['title'][:40]:42s} "
+            f"{state:22s} {row['views']} views"
+        )
+
+
+@app.command()
+def unshare(
+    token: str = typer.Argument("", help="Token (or its prefix). Omit with --all."),
+    all: bool = typer.Option(False, "--all", help="Revoke every live link."),
+) -> None:
+    """Revoke a share link immediately."""
+    s = get_settings()
+    H = {"Authorization": f"Bearer {s.ingest_token}"}
+    if not all and not token:
+        rprint("[red]give a token or --all[/red]")
+        raise typer.Exit(1)
+    full = token
+    if token and len(token) < 43:  # accept the prefix d2d shares prints
+        listing = httpx.get(f"{s.worker_url}/shares", headers=H, timeout=30).json()
+        rows = listing.get("shares", [])
+        hits = [r["token"] for r in rows if r["token"].startswith(token.rstrip("…."))]
+        if len(hits) != 1:
+            rprint(f"[red]{'no' if not hits else 'ambiguous'} token[/red] {token!r}")
+            raise typer.Exit(1)
+        full = hits[0]
+    r = httpx.post(
+        f"{s.worker_url}/unshare", json={"token": full, "all": all}, headers=H, timeout=30
+    )
+    rprint(f"[green]revoked {r.json().get('revoked', 0)} link(s)[/green]")
+
+
+@app.command()
 def prune(
     apply: bool = typer.Option(False, help="Actually archive (default: dry run)."),
 ) -> None:

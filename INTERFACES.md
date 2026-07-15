@@ -132,3 +132,23 @@ transcription pipeline was dropped — dictation covers the capture case for fre
 
 ## Scheduler
 `d2d capture` (in the launchd loop) pulls + processes queued captures every cycle.
+
+## Sharing one note
+
+The vault sits behind Cloudflare Access. To show someone a single note without
+letting them into the vault, mint a link served from the Worker instead:
+
+```
+uv run d2d share "kubernetes concepts"      # 30-day link, prints the URL
+uv run d2d share "k8s" --days 0             # no expiry
+uv run d2d shares                           # list links, state, view counts
+uv run d2d unshare RNqPYBkxZMPX             # revoke (token prefix is enough)
+uv run d2d unshare --all                    # revoke everything, now
+```
+
+Nothing is public unless a token exists for it. The page is `noindex, nofollow,
+noarchive`, sends no referrer, and isn't listed anywhere — the 43-char token is the
+only way in. Notes render to HTML **before** upload with raw HTML disabled, so a
+`<script>` in a note can never become live markup on a public page. Vault-relative
+links, assets, and the Related block are stripped: they'd 404 off-site or leak
+other note titles.
