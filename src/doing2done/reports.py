@@ -45,24 +45,56 @@ def _frontmatter(md: str) -> dict:
 
 
 def generate_tag_index(notes_dir: str) -> str:
-    """Write docs/tags.md grouping every note by tag. Returns the path."""
+    """Write docs/tags.md: a jump grid over every tag, then the notes per tag."""
     nd = Path(notes_dir)
     by_tag: dict[str, list[tuple[str, str]]] = {}
-    for md in sorted(nd.glob("*.md")):
+    for md in nd.glob("*.md"):
         if md.name == "index.md":
             continue
         fm = _frontmatter(md.read_text())
-        title = fm.get("title", md.stem)
-        for tag in fm.get("tags", []) or ["untagged"]:
-            by_tag.setdefault(tag, []).append((title, md.stem))
-    out = ["# Tags\n"]
-    for tag in sorted(by_tag):
-        out.append(f"\n## {tag}  ({len(by_tag[tag])})\n")
+        for tag in fm.get("tags", []) or []:
+            by_tag.setdefault(tag, []).append((fm.get("title", md.stem), md.stem))
+
+    ordered = sorted(by_tag, key=lambda k: (-len(by_tag[k]), k))
+    out = [
+        '<div class="v-page">',
+        '<p class="v-eyebrow">vault \u00b7 tags</p>',
+        "<h1>Tags</h1>",
+        f'<p class="v-note">{len(by_tag)} tags across '
+        f'{len({s for v in by_tag.values() for _, s in v})} notes. '
+        "Bigger chip = more notes.</p>",
+        '<div class="v-chips">',
+    ]
+    # Chips are sized by count, so the shape of your thinking is visible at a glance.
+    mx = max((len(v) for v in by_tag.values()), default=1)
+    for tag in ordered:
+        n = len(by_tag[tag])
+        weight = "lg" if n >= max(3, mx * 0.6) else ("md" if n > 1 else "sm")
+        out.append(
+            f'<a class="v-chip v-{weight}" href="#{_slug(tag)}">'
+            f"{_esc(tag)}<i>{n}</i></a>"
+        )
+    out.append("</div>")
+
+    for tag in ordered:
+        out.append(
+            f'<h2 id="{_slug(tag)}">{_esc(tag)} '
+            f'<i class="v-count">{len(by_tag[tag])}</i></h2>'
+        )
+        out.append('<ul class="v-list">')
         for title, stem in sorted(by_tag[tag]):
-            out.append(f"- [{title}](./notes/{stem})")
+            out.append(f'<li><a href="./notes/{stem}">{_esc(title)}</a></li>')
+        out.append("</ul>")
+    out.append("</div>")
     dest = nd.parent / "tags.md"
     dest.write_text("\n".join(out) + "\n")
     return str(dest)
+
+
+def _slug(s: str) -> str:
+    import re as _re
+
+    return _re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-") or "tag"
 
 
 def _kill_list(state) -> str:
@@ -114,15 +146,39 @@ def weekly_digest(settings: Settings, days: int = 7, state=None) -> str:
 
 
 def generate_duplicates_page(notes_dir: str) -> str:
-    """Write docs/duplicates.md listing near-duplicate note pairs for review."""
+    """Near-duplicate pairs, side by side and clickable -> docs/duplicates.md."""
     from .relate import find_duplicates
 
     pairs = find_duplicates(notes_dir)
-    out = ["# Possible duplicates\n", "\nNear-duplicate notes to review/merge:\n"]
+    out = [
+        '<div class="v-page">',
+        '<p class="v-eyebrow">vault \u00b7 duplicates</p>',
+        "<h1>Possible duplicates</h1>",
+    ]
     if not pairs:
-        out.append("\n*none found* 🎉")
+        out.append('<p class="v-empty">Nothing looks duplicated. \U0001f389</p></div>')
+        dest = Path(notes_dir).parent / "duplicates.md"
+        dest.write_text("\n".join(out) + "\n")
+        return str(dest)
+
+    out.append(
+        f'<p class="v-note">{len(pairs)} pairs above 0.72 similarity. '
+        "Open both, keep the better one.</p>"
+    )
     for a, b, sim in pairs:
-        out.append(f"- **{sim}** — {a}  ~  {b}")
+        pct = round(sim * 100)
+        out.append('<div class="v-dup">')
+        out.append(
+            f'<div class="v-score"><b>{pct}%</b>'
+            f'<span class="v-meter"><span style="width:{pct}%"></span></span></div>'
+        )
+        out.append(
+            f'<div class="v-pair"><a href="./notes/{a["stem"]}">{_esc(a["title"])}</a>'
+            f'<span class="v-vs">vs</span>'
+            f'<a href="./notes/{b["stem"]}">{_esc(b["title"])}</a></div>'
+        )
+        out.append("</div>")
+    out.append("</div>")
     dest = Path(notes_dir).parent / "duplicates.md"
     dest.write_text("\n".join(out) + "\n")
     return str(dest)
@@ -152,36 +208,106 @@ def generate_insights(settings: Settings) -> str:
     return str(dest)
 
 
-def _bar(n: int, scale: int = 1) -> str:
-    return "█" * max(1, round(n / scale)) if n else ""
+def _esc(s: str) -> str:
+    return (
+        str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _chart(rows: list[tuple[str, int]], *, unit: str = "", accent: str = "amber") -> str:
+    """A CSS bar chart: bars are spans with a width %, so it prints and needs no JS."""
+    if not rows:
+        return '<p class="v-empty">nothing yet</p>'
+    mx = max(n for _, n in rows) or 1
+    out = ['<div class="v-chart v-' + accent + '">']
+    for label, n in rows:
+        pct = max(2, round(n / mx * 100))
+        out.append(
+            f'<div class="v-row"><span class="v-label">{_esc(label)}</span>'
+            f'<span class="v-track"><span class="v-bar" style="width:{pct}%"></span></span>'
+            f'<span class="v-val">{n}{unit}</span></div>'
+        )
+    out.append("</div>")
+    return "".join(out)
 
 
 def generate_analytics(settings: Settings, state, svc) -> str:
-    """Completion trend + open-task breakdown -> docs/analytics.md."""
-    out = ["# Analytics\n"]
-    comp = state.completions_by_day(14)
-    out.append("\n## Completed (last 14 days)\n")
-    mx = max((n for _, n in comp), default=1)
-    for d, n in comp:
-        out.append(f"- `{d}`  {_bar(n, max(1, mx // 20))}  {n}")
-    if not comp:
-        out.append("*no completions tracked yet*")
+    """What is actually true about your workload -> docs/analytics.md.
+
+    Deliberately omits a completion trend: task_map only marks a todo complete when
+    reconciliation drops it from a note, so that series measures the pipeline's bulk
+    writes (hundreds per minute), not work you finished. Every number here is one the
+    schema can stand behind.
+    """
+    nd = Path(settings.vault_notes_dir)
+    out = [
+        '<div class="v-page">',
+        '<p class="v-eyebrow">vault \u00b7 analytics</p>',
+        "<h1>Analytics</h1>",
+    ]
+
+    open_rows: list[tuple[str, int]] = []
     if svc is not None:
-        out.append("\n## Open tasks by list\n")
         counts: dict[str, int] = {}
         for _task, pname in svc.open_with_project():
             counts[pname] = counts.get(pname, 0) + 1
-        rows = sorted(counts.items(), key=lambda x: -x[1])
-        mx2 = max((n for _, n in rows), default=1)
-        for name, n in rows:
-            out.append(f"- {name}  {_bar(n, max(1, mx2 // 20))}  {n}")
-    dest = Path(settings.vault_notes_dir).parent / "analytics.md"
+        open_rows = sorted(counts.items(), key=lambda x: -x[1])
+    total_open = sum(n for _, n in open_rows)
+
+    by_day: dict[str, int] = {}
+    for md in nd.glob("*.md"):
+        if md.name == "index.md":
+            continue
+        d = (_frontmatter(md.read_text()).get("date", "") or "").split("T")[0]
+        if d:
+            by_day[d] = by_day.get(d, 0) + 1
+    recent_notes = sorted(by_day.items())[-14:]
+
+    created = state.created_by_day(14) if state is not None else []
+    chronic = state.chronic_tasks(4) if state is not None else []
+
+    out.append('<div class="v-stats">')
+    for label, val in (
+        ("open todos", total_open),
+        ("notes", sum(by_day.values())),
+        ("lists in play", len(open_rows)),
+        ("chronic rollovers", len(chronic)),
+    ):
+        out.append(f'<div class="v-stat"><b>{val}</b><span>{label}</span></div>')
+    out.append("</div>")
+
+    out.append("<h2>Open todos by list</h2>")
+    out.append(_chart(open_rows))
+
+    out.append("<h2>Notes by date</h2>")
+    out.append(
+        '<p class="v-note">The note\'s own date \u2014 the date it names, or when '
+        "Apple Notes last modified it. Not when it was captured, so old notes show "
+        "old dates. Most recent 14 active days.</p>"
+    )
+    out.append(_chart(recent_notes, accent="sage"))
+
+    out.append("<h2>Todos created</h2>")
+    out.append('<p class="v-note">When a todo first appeared.</p>')
+    out.append(_chart(created, accent="sage"))
+
+    if chronic:
+        out.append("<h2>Kill list</h2>")
+        out.append(
+            '<p class="v-note">Rolled over four times or more. '
+            "Break them down or drop them.</p>"
+        )
+        out.append(_chart(list(chronic[:10]), unit="\u00d7", accent="rose"))
+
+    out.append("</div>")
+    dest = nd.parent / "analytics.md"
     dest.write_text("\n".join(out) + "\n")
     return str(dest)
 
 
 def generate_timeline(notes_dir: str) -> str:
-    """Notes grouped by date -> docs/timeline.md."""
+    """Notes down a dated rail -> docs/timeline.md."""
     nd = Path(notes_dir)
     by_date: dict[str, list[tuple[str, str]]] = {}
     for md in nd.glob("*.md"):
@@ -190,11 +316,25 @@ def generate_timeline(notes_dir: str) -> str:
         fm = _frontmatter(md.read_text())
         d = (fm.get("date", "") or "undated").split("T")[0]
         by_date.setdefault(d, []).append((fm.get("title", md.stem), md.stem))
-    out = ["# Timeline\n"]
-    for d in sorted(by_date, reverse=True):
-        out.append(f"\n## {d}\n")
+
+    dated = sorted((d for d in by_date if d != "undated"), reverse=True)
+    out = [
+        '<div class="v-page">',
+        '<p class="v-eyebrow">vault \u00b7 timeline</p>',
+        "<h1>Timeline</h1>",
+        f'<p class="v-note">{sum(len(v) for v in by_date.values())} notes'
+        + (f", {dated[-1]} \u2192 {dated[0]}" if dated else "")
+        + ".</p>",
+        '<div class="v-rail">',
+    ]
+    for d in dated + (["undated"] if "undated" in by_date else []):
+        out.append('<div class="v-tick">')
+        out.append(f'<div class="v-when">{_esc(d)}<i>{len(by_date[d])}</i></div>')
+        out.append('<ul class="v-list">')
         for title, stem in sorted(by_date[d]):
-            out.append(f"- [{title}](./notes/{stem})")
+            out.append(f'<li><a href="./notes/{stem}">{_esc(title)}</a></li>')
+        out.append("</ul></div>")
+    out.append("</div></div>")
     dest = nd.parent / "timeline.md"
     dest.write_text("\n".join(out) + "\n")
     return str(dest)

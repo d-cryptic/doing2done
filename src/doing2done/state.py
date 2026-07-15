@@ -156,6 +156,20 @@ class State:
         with self._conn() as c:
             return c.execute("SELECT note_id, md_path FROM notes_seen").fetchall()
 
+    def created_by_day(self, days: int = 14) -> list[tuple[str, int]]:
+        """Todos first seen per day — a real signal, unlike completions.
+
+        completions_by_day counts rows reconciliation closed in bulk, so it measures
+        pipeline activity, not yours. created_at only moves when a todo first appears.
+        """
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT substr(created_at,1,10) d, COUNT(*) n FROM task_map "
+                "WHERE created_at >= date('now', ?) GROUP BY d ORDER BY d",
+                (f"-{days} day",),
+            ).fetchall()
+        return [(r["d"], r["n"]) for r in rows]
+
     def completions_by_day(self, days: int = 14) -> list[tuple[str, int]]:
         with self._conn() as c:
             rows = c.execute(
