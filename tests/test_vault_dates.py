@@ -9,12 +9,23 @@ def _result(date: str = "") -> NoteResult:
     return NoteResult(title="Kubernetes concepts", date=date, tags=["k8s"], markdown="body")
 
 
-def test_falls_back_to_note_modified_when_classifier_finds_no_date():
+def test_uses_the_notes_own_timestamp_when_the_classifier_finds_no_date():
     assert note_date(_result(""), "2026-06-01T09:30:00") == "2026-06-01"
 
 
-def test_classifier_date_wins_over_fallback():
-    assert note_date(_result("2026-05-02"), "2026-06-01T09:30:00") == "2026-05-02"
+def test_the_notes_own_timestamp_beats_the_classifiers_reading():
+    """The note's date must not move when the pipeline re-runs.
+
+    The classifier resolves relative dates against the run date, so a note reading
+    "Date: Today" gets re-dated on every ingest — the timeline reshuffled under us.
+    Apple Notes' own timestamp is the only stable answer to "when was this written".
+    """
+    assert note_date(_result("2026-05-02"), "2026-06-01T09:30:00") == "2026-06-01"
+
+
+def test_classifier_date_is_the_last_resort():
+    """Still better than dateless when Apple Notes gives us nothing."""
+    assert note_date(_result("2026-05-02"), "") == "2026-05-02"
 
 
 def test_no_date_anywhere_stays_empty():

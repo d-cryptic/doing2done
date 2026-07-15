@@ -39,6 +39,7 @@ class RawNote:
     modified: str
     body_html: str
     folder: str
+    created: str = ""  # JXA export doesn't expose it; store reader does
 
 
 def list_notes() -> list[RawNote]:

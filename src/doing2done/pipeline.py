@@ -193,7 +193,8 @@ def run_ingest(
             md_path = None
             if not result.is_todo_only or has_media:
                 if apply:
-                    stem = note_stem(result, note.id, note.modified)
+                    own_date = getattr(note, "created", "") or note.modified
+                    stem = note_stem(result, note.id, own_date)
                     diagram_md, ndraw = _persist_diagrams(
                         stem, descs, settings.vault_notes_dir
                     )
@@ -203,7 +204,7 @@ def run_ingest(
                         settings.vault_notes_dir,
                         diagram_md,
                         note_id=note.id,
-                        fallback_date=note.modified,
+                        fallback_date=own_date,
                     )
                     if old_md and old_md != md_path and Path(old_md).exists():
                         Path(old_md).unlink()  # note kept, title changed -> drop stale file

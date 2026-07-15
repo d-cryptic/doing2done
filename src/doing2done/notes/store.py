@@ -103,7 +103,7 @@ def list_notes(container: Path = NOTES_CONTAINER) -> list[RawNote]:
         }
         rows = con.execute(
             "SELECT n.Z_PK pk, n.ZTITLE1 title, n.ZMODIFICATIONDATE1 modf, "
-            "n.ZFOLDER folder, d.ZDATA data "
+            "n.ZCREATIONDATE1 crea, n.ZFOLDER folder, d.ZDATA data "
             "FROM ZICCLOUDSYNCINGOBJECT n "
             "JOIN ZICNOTEDATA d ON n.ZNOTEDATA = d.Z_PK "
             "WHERE n.ZNOTEDATA IS NOT NULL"
@@ -127,11 +127,15 @@ def list_notes(container: Path = NOTES_CONTAINER) -> list[RawNote]:
         modified = (
             (_CD_EPOCH + dt.timedelta(seconds=r["modf"])).isoformat() if r["modf"] else ""
         )
+        created = (
+            (_CD_EPOCH + dt.timedelta(seconds=r["crea"])).isoformat() if r["crea"] else ""
+        )
         notes.append(
             RawNote(
                 id=f"x-coredata://{uuid}/ICNote/p{r['pk']}",
                 name=name,
                 modified=modified,
+                created=created,
                 body_html=text,
                 folder=folder_name,
             )
